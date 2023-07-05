@@ -3,47 +3,7 @@ import cv2
 import math
 import mediapipe as mp
 import numpy as np
-import tensorflow as tf
-
-def pred_lines(image, interpreter, input_details, output_details, input_shape=[512, 512], score_thr=0.10, dist_thr=20.0):
-    h, w, _ = image.shape
-    h_ratio, w_ratio = [h / input_shape[0], w / input_shape[1]]
-
-    resized_image = np.concatenate([cv2.resize(image, (input_shape[0], input_shape[1]), interpolation=cv2.INTER_AREA), np.ones([input_shape[0], input_shape[1], 1])], axis=-1)
-    batch_image = np.expand_dims(resized_image, axis=0).astype('float32')
-    interpreter.set_tensor(input_details[0]['index'], batch_image)
-    interpreter.invoke()
-
-    pts = interpreter.get_tensor(output_details[0]['index'])[0]
-    pts_score = interpreter.get_tensor(output_details[1]['index'])[0]
-    vmap = interpreter.get_tensor(output_details[2]['index'])[0]
-
-    start = vmap[:,:,:2]
-    end = vmap[:,:,2:]
-    dist_map = np.sqrt(np.sum((start - end) ** 2, axis=-1))
-
-    segments_list = []
-    for center, score in zip(pts, pts_score):
-        y, x = center
-        distance = dist_map[y, x]
-        if score > score_thr and distance > dist_thr:
-            disp_x_start, disp_y_start, disp_x_end, disp_y_end = vmap[y, x, :]
-            x_start = x + disp_x_start
-            y_start = y + disp_y_start
-            x_end = x + disp_x_end
-            y_end = y + disp_y_end
-            segments_list.append([x_start, y_start, x_end, y_end])
-    
-    if not segments_list:
-        return None
-
-    lines = 2 * np.array(segments_list) # 256 > 512
-    lines[:,0] = lines[:,0] * w_ratio
-    lines[:,1] = lines[:,1] * h_ratio
-    lines[:,2] = lines[:,2] * w_ratio
-    lines[:,3] = lines[:,3] * h_ratio
-
-    return lines
+from ultralytics import YOLO
 
 class HandDetector:
     """
@@ -110,9 +70,9 @@ class HandDetector:
 
                 if flipType:
                     if handType.classification[0].label == "Right":
-                        myHand["type"] = "Left"
-                    else:
                         myHand["type"] = "Right"
+                    else:
+                        myHand["type"] = "Left"
                 else:
                     myHand["type"] = handType.classification[0].label
                 allHands.append(myHand)
@@ -120,8 +80,8 @@ class HandDetector:
                 ## draw
                 if draw:
                     self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
-                    #cv2.rectangle(img, (bbox[0] - 20, bbox[1] - 20), (bbox[0] + bbox[2] + 20, bbox[1] + bbox[3] + 20), (255, 0, 255), 2)
-                    #cv2.putText(img, myHand["type"], (bbox[0] - 30, bbox[1] - 30), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 255), 2)
+                    cv2.rectangle(img, (bbox[0] - 20, bbox[1] - 20), (bbox[0] + bbox[2] + 20, bbox[1] + bbox[3] + 20), (255, 0, 255), 2)
+                    cv2.putText(img, myHand["type"], (bbox[0] - 30, bbox[1] - 30), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 255), 2)
         if draw:
             return allHands, img
         else:
@@ -184,11 +144,37 @@ class HandDetector:
         else:
             return length, info
 
+def hand_proc(img):
+    hands, img = detector.findHands(img)
 
-interpreter = tf.lite.Interpreter("M-LSD_512_tiny_fp16.tflite")
-interpreter.allocate_tensors()
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
+    data = []
+    if hands:
+        # Hand 1
+        hand = hands[0]
+        lmList = hand["lmList"]  # List of 21 Landmark points
+        for lm in lmList:
+            data.extend([lm[0], h - lm[1], lm[2]])
+
+def guitar_proc(img):
+    results = model(img)[0]
+    cropped_img = None
+
+    for result in results.boxes.data.tolist():
+        x1, y1, x2, y2, score, class_id = result
+
+        if score > threshold:
+            cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 4)
+            cv2.putText(img, results.names[int(class_id)], (int(x1), int(y1 - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 255, 0), 3, cv2.LINE_AA)
+
+            # Extract the region of interest using the bounding box coordinates
+            cropped_img = img[int(y1):int(y2), int(x1):int(x2)]
+            break  # Stop the loop after finding the first bounding box
+
+    return cropped_img
+
+model = YOLO("guitar_detect.pt")
+threshold = 0.3
 
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -202,26 +188,18 @@ mirror_effect = True
 while True:
     success, img = cap.read()
 
-    lines = pred_lines(img, interpreter, input_details, output_details, input_shape=[512, 512], score_thr=0.1, dist_thr=10.0)
-    for line in lines:
-        x_start, y_start, x_end, y_end = [int(val) for val in line]
-        cv2.line(img, (x_start, y_start), (x_end, y_end), [0, 255, 255], 2)
-
-    hands, img = detector.findHands(img)
-
     if mirror_effect:
         img = cv2.flip(img, 1)
+    
+    hand_proc(img=img)
+    img_cut = guitar_proc(img=img)
 
-    data = []
-    if hands:
-        # Hand 1
-        hand = hands[0]
-        lmList = hand["lmList"]  # List of 21 Landmark points
-        for lm in lmList:
-            data.extend([lm[0], h - lm[1], lm[2]])
 
     # Display
-    cv2.imshow("Image", img)
+    cv2.imshow("img", img)
+    if img_cut is not None:       
+        cv2.imshow("img_cut", img_cut)
+        
     if cv2.waitKey(1) == 27:
         break
 
