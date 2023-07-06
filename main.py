@@ -1,6 +1,7 @@
 ### The following hand-detection code is by cvzone(https://www.computervision.zone/) the video it is taken from: https://www.youtube.com/watch?v=RQ-2JWzNc6k
 import cv2
 import math
+import tensorflow as tf
 import mediapipe as mp
 import numpy as np
 from ultralytics import YOLO
@@ -156,25 +157,41 @@ def hand_proc(img):
             data.extend([lm[0], h - lm[1], lm[2]])
 
 def guitar_proc(img):
-    results = model(img)[0]
+    results = model_guitar_detect(img)[0]
     cropped_img = None
+    slope_guitar = None
 
     for result in results.boxes.data.tolist():
         x1, y1, x2, y2, score, class_id = result
+        slope_guitar = (y2 - y1) / (x2 - x1)
 
-        if score > threshold:
+        if score > threshold_guitar_detect:
             cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 4)
             cv2.putText(img, results.names[int(class_id)], (int(x1), int(y1 - 10)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 255, 0), 3, cv2.LINE_AA)
-
-            # Extract the region of interest using the bounding box coordinates
+                        cv2.FONT_HERSHEY_PLAIN, 1.3, (0, 0, 255), 3, cv2.LINE_AA)
+            
             cropped_img = img[int(y1):int(y2), int(x1):int(x2)]
-            break  # Stop the loop after finding the first bounding box
+            break 
 
-    return cropped_img
+    return cropped_img, slope_guitar
 
-model = YOLO("guitar_detect.pt")
-threshold = 0.3
+def canny_houg_lines(img, slope_guitar):
+    gray_scale = img.copy()
+    gray_scale = cv2.cvtColor(gray_scale, cv2.COLOR_BGR2GRAY)
+    dst = cv2.Canny(gray_scale, 50, 200, None, 3)
+    
+    cdstP = cv2.cvtColor(dst, cv2.COLOR_GRAY2BGR)
+
+    linesP = cv2.HoughLinesP(dst, 1, np.pi / 180, 50, None, 50, 10)
+    
+    if linesP is not None:
+        for i in range(0, len(linesP)):
+            l = linesP[i][0]
+            cv2.line(cdstP, (l[0], l[1]), (l[2], l[3]), (0,0,255), 1, cv2.LINE_AA)
+    return cdstP 
+    
+model_guitar_detect = YOLO("guitar_detect.pt")
+threshold_guitar_detect = 0.3
 
 cap = cv2.VideoCapture(0)
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
@@ -191,15 +208,15 @@ while True:
     if mirror_effect:
         img = cv2.flip(img, 1)
     
+    img_cut, slope_guitar = guitar_proc(img=img)
+    if img_cut is not None and slope_guitar is not None:
+        img_cut = canny_houg_lines(img_cut, slope_guitar)
     hand_proc(img=img)
-    img_cut = guitar_proc(img=img)
 
-
-    # Display
     cv2.imshow("img", img)
     if img_cut is not None:       
         cv2.imshow("img_cut", img_cut)
-        
+
     if cv2.waitKey(1) == 27:
         break
 
