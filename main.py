@@ -151,12 +151,9 @@ def hand_proc(img_detect, img_draw):
 def object_detect(img, model):
     results = model(img)[0]
     cropped_img = None
-    angle = None
 
     for result in results.boxes.data.tolist():
         x1, y1, x2, y2, score, class_id = result
-        angle = np.abs(np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi)
-
         if score > threshold_detect:
             cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 4)
             cv2.putText(img, results.names[int(class_id)], (int(x1), int(y1 - 10)),
@@ -168,13 +165,15 @@ def object_detect(img, model):
             sub_window_coord.append((cut_x, cut_y))
             break 
 
-    return cropped_img, angle
+    return cropped_img
 
 def object_segment(img, model):
     results = model(img)
     mask_rgba = np.zeros_like(img)
     box = None
     center = [0, 0]
+    max_side_length = 0
+
     if results[0].masks is not None:
         for j, mask in enumerate(results[0].masks.data):
             mask = (mask.cpu().numpy() * 255).astype(np.uint8)
@@ -194,20 +193,15 @@ def object_segment(img, model):
 
             if max_contour is not None:
                 rect = cv2.minAreaRect(max_contour)
+                center = [int(rect[0][0]), int(rect[0][1])]
                 box = cv2.boxPoints(rect)
                 box = np.int0(box)
-                
-                for vertice in box:
-                    center[0] += vertice[0]
-                    center[1] += vertice[1]
-                center[0] /= 4
-                center[1] /= 4
-                center = [int(center[0]), int(center[1])]
+                max_side_length = int(max([np.linalg.norm(box[i] - box[(i+1) % 4]) for i in range(4)])) 
 
                 cv2.drawContours(mask_rgba, [box], 0, (0, 0, 255), 2)
                 cv2.circle(mask_rgba, center, radius=5, color=(0, 255, 0), thickness=-2)
 
-    return mask_rgba, box, center
+    return mask_rgba, center, max_side_length
 
 model_guitar_detect = YOLO("guitar_detect.pt")
 
@@ -222,7 +216,7 @@ detector = HandDetector(detectionCon=0.8, maxHands=2)
 img_cut_value = 0
 
 #cap = cv2.VideoCapture(0)
-cap = cv2.VideoCapture('test.mp4')
+cap = cv2.VideoCapture('test3.mp4')
 cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
 cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 success, img = cap.read()
@@ -233,12 +227,13 @@ record = False
 tutor = True
 
 counter = 0
+step = 127
 slowing_factor = 1
 
 if tutor:
     with open("output.txt", 'r') as text_file:
         data = text_file.read().rstrip(',')
-        pre_recorded = [int(x) for x in data.split(',')]
+        pre_recorded = [float(x) for x in data.split(',')]
     
 
 while True:
@@ -253,29 +248,36 @@ while True:
     img_hands = img.copy()
     
     sub_window_coord = []
-    img_guitar, angle_guitar = object_detect(img, model_guitar_detect)
-    if img_guitar is not None and angle_guitar is not None:
-        img_fretboard, angle_fretboard = object_detect(img_guitar, model_fretboard_detect)
-        if img_fretboard is not None and angle_fretboard is not None:
-            img_fretboard, box, center = object_segment(img_fretboard, model_fretboard_seg)
-            if box is not None:
-                for vertice in box:
-                    vertice[0] += sub_window_coord[0][0] + sub_window_coord[1][0]
-                    vertice[1] += sub_window_coord[0][1] + sub_window_coord[1][1]
-                center[0] += sub_window_coord[0][0] + sub_window_coord[1][0]
-                center[1] += sub_window_coord[0][1] + sub_window_coord[1][1]
-                if tutor:
-                    sub_list = pre_recorded[counter : min(counter + 126, len(pre_recorded))]
-                    landmark_list = []
-                    for i in range(0, len(sub_list), 3):
-                        x, y, z = sub_list[i:i+3]
-                        x += center[0]
-                        y += center[1]
-                        landmark_list.append([x, y, z])
-                    for landmark in landmark_list:
-                        cv2.circle(img, (landmark[0], landmark[1]), radius=5, color=(0, 255, 0), thickness=-2)
-                    if int(time.time()) % slowing_factor == 0:
-                        counter += 126
+    img_guitar = object_detect(img, model_guitar_detect)
+    if img_guitar is not None:
+        img_fretboard = object_detect(img_guitar, model_fretboard_detect)
+        if img_fretboard is not None:
+            img_fretboard, center, max_side_length = object_segment(img_fretboard, model_fretboard_seg)
+            center[0] += sub_window_coord[0][0] + sub_window_coord[1][0]
+            center[1] += sub_window_coord[0][1] + sub_window_coord[1][1]
+            if tutor:
+                sub_list = pre_recorded[counter : min(counter + step, len(pre_recorded))]
+                landmark_list = []
+                landmarks = list(sub_list[:-1])
+                try:
+                    max_side_length_read = sub_list[-1]
+                except IndexError:
+                    cap.release()
+                    cv2.destroyAllWindows() 
+
+                for i in range(0, len(landmarks), 3):
+                    r, theta, z = sub_list[i:i+3]
+
+                    r *= max_side_length/max_side_length_read
+
+                    x = int(r * np.cos(theta) + center[0])
+                    y = int(r * np.sin(theta) + center[1])
+
+                    landmark_list.append([int(x), int(y), int(z)])
+                for landmark in landmark_list:
+                    cv2.circle(img, (landmark[0], landmark[1]), radius=5, color=(0, 0, 255), thickness=-2)
+                if int(time.time()) % slowing_factor == 0:
+                    counter += step
 
     else:
         continue
@@ -286,7 +288,10 @@ while True:
             write_data = []
             for hand in hands:
                 for landmark in hand["lmList"]:
-                    write_data.extend([landmark[0] - center[0], landmark[1] - center[1], landmark[2]])
+                    r = np.sqrt(pow(landmark[0] - center[0], 2) + pow(landmark[1] - center[1], 2))
+                    theta = np.arctan2(landmark[1] - center[1], landmark[0] - center[0])
+                    write_data.extend([r, theta, landmark[2]])
+            write_data.extend([max_side_length])
             with open("output.txt", 'a') as text_file:
                 text_file.write(','.join(str(x) for x in write_data))
                 text_file.write(',')
