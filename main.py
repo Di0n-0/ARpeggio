@@ -174,6 +174,7 @@ def object_segment(img, model):
     mask_rgba = np.zeros_like(img)
     box = None
     center = [0, 0]
+    angle = 0
     max_side_length = 0
 
     if results[0].masks is not None:
@@ -196,6 +197,7 @@ def object_segment(img, model):
             if max_contour is not None:
                 rect = cv2.minAreaRect(max_contour)
                 center = [int(rect[0][0]), int(rect[0][1])]
+                angle = rect[2]
                 box = cv2.boxPoints(rect)
                 box = np.int0(box)
                 max_side_length = int(max([np.linalg.norm(box[i] - box[(i+1) % 4]) for i in range(4)])) 
@@ -203,7 +205,7 @@ def object_segment(img, model):
                 cv2.drawContours(mask_rgba, [box], 0, (0, 0, 255), 2)
                 cv2.circle(mask_rgba, center, radius=5, color=(0, 255, 0), thickness=-2)
 
-    return mask_rgba, center, max_side_length
+    return mask_rgba, center, angle, max_side_length
 
 def draw_pre_recorded(img, landmark_list):
     line_list = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11), (11, 12), (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (0, 17), (17, 18), (18, 19), (19, 20)]
@@ -222,7 +224,7 @@ def gui_init():
         [sg.Text("Mirror Effect"), sg.Checkbox("", default=mirror_effect, key="mirror_effect", enable_events=True)],
         [sg.Text("Record"), sg.Checkbox("", default=record, key="record", enable_events=True)],
         [sg.Text("Tutor"), sg.Checkbox("", default=tutor, key="tutor", enable_events=True)],
-        [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(1, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
+        [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
         [sg.Text("Pre-recorded File", key="pre_recorded_file", visible=tutor), sg.InputText(default_text=pre_recorded_file, key="pre_recorded_file_input_box", visible=tutor), sg.FileBrowse(visible=tutor, key="pre_recorded_file_browse", enable_events=True)],
         [sg.Text("Video", key="video_file", visible=record), sg.InputText(default_text=video, key="video_file_input_box", visible=record), sg.FileBrowse(visible=record, key="video_file_browse", enable_events=True)],
         [sg.Button("Save", key="save", enable_events=True), sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
@@ -292,8 +294,8 @@ record = False
 tutor = True
 
 counter = 0
-step = 127
-slowing_factor = 1
+step = 128
+slowing_factor = 0
 
 exit = False
 
@@ -334,13 +336,14 @@ while True:
     if img_guitar is not None:
         img_fretboard = object_detect(img_guitar, model_fretboard_detect)
         if img_fretboard is not None:
-            img_fretboard, center, max_side_length = object_segment(img_fretboard, model_fretboard_seg)
+            img_fretboard, center, angle, max_side_length = object_segment(img_fretboard, model_fretboard_seg)
             center[0] += sub_window_coord[0][0] + sub_window_coord[1][0]
             center[1] += sub_window_coord[0][1] + sub_window_coord[1][1]
-            if tutor and max_side_length != 0:
+            if tutor and max_side_length > 0:
                 sub_list = pre_recorded[counter : min(counter + step, len(pre_recorded))]
                 landmark_list = []
-                landmarks = list(sub_list[:-1])
+                landmarks = list(sub_list[:-2])
+                angle_read = sub_list[-2]
                 try:
                     max_side_length_read = sub_list[-1]
                 except IndexError:
@@ -349,16 +352,23 @@ while True:
                     sys.exit()
 
                 for i in range(0, len(landmarks), 3):
-                    r, theta, z = sub_list[i:i+3]
+                    x, y, z = sub_list[i:i+3]
 
-                    r *= max_side_length/max_side_length_read
+                    x += center[0]
+                    y += center[1]
 
-                    x = int(r * np.cos(theta) + center[0])
-                    y = int(r * np.sin(theta) + center[1])
+                    x_rotated = (x - center[0]) * np.cos(np.deg2rad(angle - angle_read)) - (y - center[1]) * np.sin(np.deg2rad(angle - angle_read)) + center[0]
+                    y_rotated = (x - center[0]) * np.sin(np.deg2rad(angle - angle_read)) + (y - center[1]) * np.cos(np.deg2rad(angle - angle_read)) + center[1]
 
-                    landmark_list.append([int(x), int(y), int(z)])
+                    x *= max_side_length/max_side_length_read
+                    y *= max_side_length/max_side_length_read
+
+                    landmark_list.append([int(x_rotated), int(y_rotated), int(z)])
                 img = draw_pre_recorded(img, landmark_list)
-                if int(time.time()) % slowing_factor == 0:
+                if slowing_factor != 0:
+                    if int(time.time()) % slowing_factor == 0:
+                        counter += step
+                else:
                     counter += step
 
     else:
@@ -366,14 +376,15 @@ while True:
 
     hands = hand_proc(img_detect=img_hands, img_draw=img)
     if hands:
-        if record:
+        if record and len(hands) == 2 and max_side_length > 0:
             write_data = []
             for hand in hands:
                 for landmark in hand["lmList"]:
-                    r = np.sqrt(pow(landmark[0] - center[0], 2) + pow(landmark[1] - center[1], 2))
-                    theta = np.arctan2(landmark[1] - center[1], landmark[0] - center[0])
-                    write_data.extend([r, theta, landmark[2]])
-            write_data.extend([max_side_length])
+                    #r = np.sqrt(pow(landmark[0] - center[0], 2) + pow(landmark[1] - center[1], 2))
+                    #theta = np.arctan2(landmark[1] - center[1], landmark[0] - center[0])
+                    #write_data.extend([r, theta, landmark[2]])
+                    write_data.extend([landmark[0] - center[0], landmark[1] - center[1], landmark[2]])
+            write_data.extend([angle, max_side_length])
             with open(video.replace(".mp4", ".txt"), 'a') as text_file:
                 text_file.write(','.join(str(x) for x in write_data))
                 text_file.write(',')
