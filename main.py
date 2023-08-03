@@ -172,10 +172,9 @@ def object_detect(img, model):
 def object_segment(img, model):
     results = model(img)
     mask_rgba = np.zeros_like(img)
-    box = None
     center = [0, 0]
     angle = 0
-    max_side_length = 0
+    diag_rect = 0
 
     if results[0].masks is not None:
         for j, mask in enumerate(results[0].masks.data):
@@ -200,12 +199,14 @@ def object_segment(img, model):
                 angle = rect[2]
                 box = cv2.boxPoints(rect)
                 box = np.int0(box)
-                max_side_length = int(max([np.linalg.norm(box[i] - box[(i+1) % 4]) for i in range(4)])) 
+                width_rect = rect[1][0]
+                height_rect = rect[1][1]
+                diag_rect = np.sqrt(pow(width_rect, 2) + pow(height_rect, 2))
 
                 cv2.drawContours(mask_rgba, [box], 0, (0, 0, 255), 2)
-                cv2.circle(mask_rgba, center, radius=5, color=(0, 255, 0), thickness=-2)
+                cv2.circle(mask_rgba, center, radius=5, color=(0, 0, 255), thickness=-2)
 
-    return mask_rgba, center, angle, max_side_length
+    return mask_rgba, center, angle, diag_rect
 
 def draw_pre_recorded(img, landmark_list):
     line_list = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11), (11, 12), (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (0, 17), (17, 18), (18, 19), (19, 20)]
@@ -268,9 +269,17 @@ def handle_tweaks():
     gui_init()
     if tutor:
         global pre_recorded_file, pre_recorded
-        with open(pre_recorded_file, 'r') as text_file:
-            data = text_file.read().rstrip(',')
-            pre_recorded = [float(x) for x in data.split(',')]
+        try:
+            if(pre_recorded_file.endswith(".txt")):
+                with open(pre_recorded_file, 'r') as text_file:
+                    data = text_file.read().rstrip(',')
+                    pre_recorded = [float(x) for x in data.split(',')]
+            else:
+                print("Pre-recorded files must have suffix \".txt\", if you don't have such a file record it")
+                sys.exit()
+        except FileNotFoundError:
+            print("There is no such pre-recorded file, exiting")
+            sys.exit()
 
 model_guitar_detect = YOLO("guitar_detect.pt")
 
@@ -317,7 +326,7 @@ h, w, _ = img.shape
 previousTime = 0
 currentTime = 0
 
-while True:
+while tutor or record:
     success, img = cap.read()
 
     if success is False or exit:
@@ -336,16 +345,16 @@ while True:
     if img_guitar is not None:
         img_fretboard = object_detect(img_guitar, model_fretboard_detect)
         if img_fretboard is not None:
-            img_fretboard, center, angle, max_side_length = object_segment(img_fretboard, model_fretboard_seg)
+            img_fretboard, center, angle, diag_rect = object_segment(img_fretboard, model_fretboard_seg)
             center[0] += sub_window_coord[0][0] + sub_window_coord[1][0]
             center[1] += sub_window_coord[0][1] + sub_window_coord[1][1]
-            if tutor and max_side_length > 0:
+            if tutor and diag_rect > 0:
                 sub_list = pre_recorded[counter : min(counter + step, len(pre_recorded))]
                 landmark_list = []
                 landmarks = list(sub_list[:-2])
                 angle_read = sub_list[-2]
                 try:
-                    max_side_length_read = sub_list[-1]
+                    diag_rect_read = sub_list[-1]
                 except IndexError:
                     cap.release()
                     cv2.destroyAllWindows() 
@@ -354,14 +363,14 @@ while True:
                 for i in range(0, len(landmarks), 3):
                     x, y, z = sub_list[i:i+3]
 
+                    x *= (diag_rect * np.cos(np.deg2rad(angle))) / (diag_rect_read * np.cos(np.deg2rad(angle_read)))
+                    y *= (diag_rect * np.sin(np.deg2rad(angle))) / (diag_rect_read * np.sin(np.deg2rad(angle_read)))
+
                     x += center[0]
                     y += center[1]
 
                     x_rotated = (x - center[0]) * np.cos(np.deg2rad(angle - angle_read)) - (y - center[1]) * np.sin(np.deg2rad(angle - angle_read)) + center[0]
                     y_rotated = (x - center[0]) * np.sin(np.deg2rad(angle - angle_read)) + (y - center[1]) * np.cos(np.deg2rad(angle - angle_read)) + center[1]
-
-                    x *= max_side_length/max_side_length_read
-                    y *= max_side_length/max_side_length_read
 
                     landmark_list.append([int(x_rotated), int(y_rotated), int(z)])
                 img = draw_pre_recorded(img, landmark_list)
@@ -376,15 +385,12 @@ while True:
 
     hands = hand_proc(img_detect=img_hands, img_draw=img)
     if hands:
-        if record and len(hands) == 2 and max_side_length > 0:
+        if record and len(hands) == 2 and diag_rect > 0:
             write_data = []
             for hand in hands:
                 for landmark in hand["lmList"]:
-                    #r = np.sqrt(pow(landmark[0] - center[0], 2) + pow(landmark[1] - center[1], 2))
-                    #theta = np.arctan2(landmark[1] - center[1], landmark[0] - center[0])
-                    #write_data.extend([r, theta, landmark[2]])
                     write_data.extend([landmark[0] - center[0], landmark[1] - center[1], landmark[2]])
-            write_data.extend([angle, max_side_length])
+            write_data.extend([angle, diag_rect])
             with open(video.replace(".mp4", ".txt"), 'a') as text_file:
                 text_file.write(','.join(str(x) for x in write_data))
                 text_file.write(',')
