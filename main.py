@@ -174,7 +174,8 @@ def object_segment(img, model):
     mask_rgba = np.zeros_like(img)
     center = [0, 0]
     angle = 0
-    diag_rect = 0
+    width_rect = 0
+    height_rect = 0
 
     if results[0].masks is not None:
         for j, mask in enumerate(results[0].masks.data):
@@ -201,12 +202,11 @@ def object_segment(img, model):
                 box = np.int0(box)
                 width_rect = rect[1][0]
                 height_rect = rect[1][1]
-                diag_rect = np.sqrt(pow(width_rect, 2) + pow(height_rect, 2))
 
                 cv2.drawContours(mask_rgba, [box], 0, (0, 0, 255), 2)
                 cv2.circle(mask_rgba, center, radius=5, color=(0, 0, 255), thickness=-2)
 
-    return mask_rgba, center, angle, diag_rect
+    return mask_rgba, center, angle, width_rect, height_rect
 
 def draw_pre_recorded(img, landmark_list):
     line_list = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11), (11, 12), (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (0, 17), (17, 18), (18, 19), (19, 20)]
@@ -303,7 +303,7 @@ record = False
 tutor = True
 
 counter = 0
-step = 128
+step = 129
 slowing_factor = 0
 
 exit = False
@@ -345,16 +345,17 @@ while tutor or record:
     if img_guitar is not None:
         img_fretboard = object_detect(img_guitar, model_fretboard_detect)
         if img_fretboard is not None:
-            img_fretboard, center, angle, diag_rect = object_segment(img_fretboard, model_fretboard_seg)
+            img_fretboard, center, angle, width_rect, height_rect = object_segment(img_fretboard, model_fretboard_seg)
             center[0] += sub_window_coord[0][0] + sub_window_coord[1][0]
             center[1] += sub_window_coord[0][1] + sub_window_coord[1][1]
-            if tutor and diag_rect > 0:
+            if tutor and width_rect > 0 and height_rect > 0:
                 sub_list = pre_recorded[counter : min(counter + step, len(pre_recorded))]
                 landmark_list = []
-                landmarks = list(sub_list[:-2])
-                angle_read = sub_list[-2]
+                landmarks = list(sub_list[:-3])
+                angle_read = sub_list[-3]
+                width_rect_read = sub_list[-2]
                 try:
-                    diag_rect_read = sub_list[-1]
+                    height_rect_read = sub_list[-1]
                 except IndexError:
                     cap.release()
                     cv2.destroyAllWindows() 
@@ -363,8 +364,8 @@ while tutor or record:
                 for i in range(0, len(landmarks), 3):
                     x, y, z = sub_list[i:i+3]
 
-                    x *= (diag_rect * np.cos(np.deg2rad(angle))) / (diag_rect_read * np.cos(np.deg2rad(angle_read)))
-                    y *= (diag_rect * np.sin(np.deg2rad(angle))) / (diag_rect_read * np.sin(np.deg2rad(angle_read)))
+                    x *= width_rect / width_rect_read
+                    y *= height_rect / height_rect_read
 
                     x += center[0]
                     y += center[1]
@@ -372,7 +373,7 @@ while tutor or record:
                     x_rotated = (x - center[0]) * np.cos(np.deg2rad(angle - angle_read)) - (y - center[1]) * np.sin(np.deg2rad(angle - angle_read)) + center[0]
                     y_rotated = (x - center[0]) * np.sin(np.deg2rad(angle - angle_read)) + (y - center[1]) * np.cos(np.deg2rad(angle - angle_read)) + center[1]
 
-                    landmark_list.append([int(x_rotated), int(y_rotated), int(z)])
+                    landmark_list.append([round(x_rotated), round(y_rotated), round(z)])
                 img = draw_pre_recorded(img, landmark_list)
                 if slowing_factor != 0:
                     if int(time.time()) % slowing_factor == 0:
@@ -385,12 +386,12 @@ while tutor or record:
 
     hands = hand_proc(img_detect=img_hands, img_draw=img)
     if hands:
-        if record and len(hands) == 2 and diag_rect > 0:
+        if record and len(hands) == 2 and width_rect > 0 and height_rect > 0:
             write_data = []
             for hand in hands:
                 for landmark in hand["lmList"]:
                     write_data.extend([landmark[0] - center[0], landmark[1] - center[1], landmark[2]])
-            write_data.extend([angle, diag_rect])
+            write_data.extend([angle, width_rect, height_rect])
             with open(video.replace(".mp4", ".txt"), 'a') as text_file:
                 text_file.write(','.join(str(x) for x in write_data))
                 text_file.write(',')
