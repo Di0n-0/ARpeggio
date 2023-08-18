@@ -14,7 +14,7 @@ def gui_init():
     layout_gui = [
         [sg.Text("Mirror Effect"), sg.Checkbox("", default=mirror_effect, key="mirror_effect", enable_events=True)],
         [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
-        [sg.InputText(key="-FILE-", enable_events=True), sg.FileBrowse(file_types=file_types)],
+        [sg.InputText(default_text=file_path, key="-FILE-", enable_events=True), sg.FileBrowse(file_types=file_types)],
         [sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
     ]
     window_gui = sg.Window("Settings", layout_gui)
