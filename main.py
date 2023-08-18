@@ -8,17 +8,14 @@ from ultralytics import YOLO
 import PySimpleGUI as sg
 
 def gui_init():
-    global video, pre_recorded_file, mirror_effect, tutor, record, slowing_factor, cap
-
+    global file_path, mirror_effect, tutor, record, slowing_factor, cap
     sg.theme("LightGrey5")
+    file_types = [("Supported Files", "*.mp4 *.txt")]
     layout_gui = [
         [sg.Text("Mirror Effect"), sg.Checkbox("", default=mirror_effect, key="mirror_effect", enable_events=True)],
-        [sg.Text("Record"), sg.Checkbox("", default=record, key="record", enable_events=True)],
-        [sg.Text("Tutor"), sg.Checkbox("", default=tutor, key="tutor", enable_events=True)],
         [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
-        [sg.Text("Pre-recorded File", key="pre_recorded_file", visible=tutor), sg.InputText(default_text=pre_recorded_file, key="pre_recorded_file_input_box", visible=tutor), sg.FileBrowse(visible=tutor, key="pre_recorded_file_browse", enable_events=True)],
-        [sg.Text("Video", key="video_file", visible=record), sg.InputText(default_text=video, key="video_file_input_box", visible=record), sg.FileBrowse(visible=record, key="video_file_browse", enable_events=True)],
-        [sg.Button("Save", key="save", enable_events=True), sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
+        [sg.InputText(key="-FILE-", enable_events=True), sg.FileBrowse(file_types=file_types)],
+        [sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
     ]
     window_gui = sg.Window("Settings", layout_gui)
 
@@ -33,49 +30,30 @@ def gui_init():
                     cv2.destroyAllWindows()
                 window_gui.close()
                 sys.exit()
-
+            elif event == '-FILE-':
+                file_path = values['-FILE-']  
             mirror_effect = values["mirror_effect"]
-            tutor = values["tutor"]
-            record = values["record"]
             slowing_factor = values["slowing_factor"]
-            
-            window_gui["slowing_factor_text"].update(visible=tutor and not record)
-            window_gui["slowing_factor"].update(visible=tutor and not record)
-            window_gui["pre_recorded_file"].update(visible=tutor and not record)
-            window_gui["pre_recorded_file"].update(visible=tutor and not record)
-            window_gui["video_file"].update(visible=record and not tutor)
-            window_gui["pre_recorded_file_input_box"].update(visible=tutor and not record)
-            window_gui["video_file_input_box"].update(visible=record and not tutor)
-            window_gui["pre_recorded_file_browse"].update(visible=tutor and not record)
-            window_gui["video_file_browse"].update(visible=record and not tutor)
-
-            if event == "save":
-                if tutor and not record:
-                    pre_recorded_file = values["pre_recorded_file_input_box"]
-                elif record and not tutor:
-                    video = values["video_file_input_box"]
+            if file_path.endswith(".txt"):
+                tutor = True
+                record = False
+            elif file_path.endswith(".mp4"):
+                tutor = False
+                record = True
 
     window_gui.close()
-    return mirror_effect, tutor, record, slowing_factor, pre_recorded_file, video
 
 def handle_tweaks():
-    global tutor, pre_recorded_file, pre_recorded, video, mirror_effect, record, slowing_factor, cap
-
+    global tutor, file_path, pre_recorded
     gui_init()
     if tutor:
         try:
-            if(pre_recorded_file.endswith(".txt")):
-                with open(pre_recorded_file, 'r') as text_file:
-                    data = text_file.read().rstrip(',')
-                    pre_recorded = [float(x) for x in data.split(',')]
-            else:
-                print("Pre-recorded files must have suffix \".txt\", if you don't have such a file record it")
-                sys.exit()
+            with open(file_path, 'r') as text_file:
+                data = text_file.read().rstrip(',')
+                pre_recorded = [float(x) for x in data.split(',')]
         except FileNotFoundError:
             print("There is no such pre-recorded file, exiting")
             sys.exit()
-        return pre_recorded, pre_recorded_file
-    return None
 
 class HandDetector:
     """
@@ -211,8 +189,9 @@ def object_segment(img, model):
                 width_rect = rect[1][0]
                 height_rect = rect[1][1]
 
-                cv2.drawContours(mask_rgba, [box], 0, (0, 0, 255), 2)
-                cv2.circle(mask_rgba, center, radius=5, color=(0, 0, 255), thickness=-2)
+                for img_draw in [mask_rgba, img]:
+                    cv2.drawContours(img_draw, [box], 0, (0, 0, 255), 2)
+                    cv2.circle(img_draw, center, radius=5, color=(0, 0, 255), thickness=-2)
 
     return mask_rgba, center, angle, width_rect, height_rect
 
@@ -288,7 +267,7 @@ def proc_hands(img_detect, img_draw):
     return hands
 
 def record_hands(hands, center, angle, width_rect, height_rect):
-    global video
+    global file_path
     if hands:
         if len(hands) == 2 and width_rect > 0 and height_rect > 0:
             write_data = []
@@ -296,23 +275,22 @@ def record_hands(hands, center, angle, width_rect, height_rect):
                 for landmark in hand["lmList"]:
                     write_data.extend([landmark[0] - center[0], landmark[1] - center[1], landmark[2]])
             write_data.extend([angle, width_rect, height_rect])
-            with open(video.replace(".mp4", ".txt"), 'a') as text_file:
+            with open(file_path.replace(".mp4", ".txt"), 'a') as text_file:
                 text_file.write(','.join(str(x) for x in write_data))
                 text_file.write(',')
 
 def main():
-    global model_guitar_detect, model_fretboard_detect, model_fretboard_seg, threshold_detect, img_cut_value, detector, pre_recorded_file, pre_recorded, video, mirror_effect, tutor, record, counter, step, slowing_factor, cap
-
+    global model_guitar_detect, model_fretboard_detect, model_fretboard_seg, threshold_detect, img_cut_value, detector, file_path, pre_recorded, mirror_effect, tutor, record, counter, step, slowing_factor, cap
     handle_tweaks()
 
     if record:
         try:
-            cap = cv2.VideoCapture(video)
+            cap = cv2.VideoCapture(file_path)
         except FileNotFoundError:
             print("There is no such video file, exiting")
             sys.exit()
     else:
-        cap = cv2.VideoCapture("test.mp4")
+        cap = cv2.VideoCapture("test1.mp4")#0
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -371,9 +349,7 @@ detector = HandDetector(detectionCon=0.8, maxHands=2)
 
 img_cut_value = 0
 
-video = ""
-
-pre_recorded_file = ""
+file_path = ""
 pre_recorded = []
 
 mirror_effect = False
