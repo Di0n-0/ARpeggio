@@ -325,11 +325,10 @@ def main():
             print("There is no such video file, exiting")
             sys.exit()
     else:
-        cap = cv2.VideoCapture("test1.mp4")#0
+        cap = cv2.VideoCapture(0)#0
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    success, img = cap.read()
 
     previousTime = 0
     currentTime = 0
@@ -338,6 +337,9 @@ def main():
         success, img = cap.read()
         if success is False:
             break
+ 
+        if cv2.waitKey(1) == 27:
+            handle_tweaks()
 
         currentTime = time.time()
         fps = 1 / (currentTime-previousTime)
@@ -362,15 +364,14 @@ def main():
             img_guitar = cv2.flip(img_guitar, 1)
             img_fretboard = cv2.flip(img_fretboard, 1)
 
-        cv2.imshow("img", img)
+        try:
+            cv2.imshow("ARpeggio", img)
+        except cv2.error:
+            print(img)
         if img_guitar is not None and dev_mode:       
             cv2.imshow("img_guitar", img_guitar)
         if img_fretboard is not None and dev_mode:
             cv2.imshow("img_fretboard", img_fretboard)
-        
-        if cv2.waitKey(1) == 27:
-            handle_tweaks()
-
 
     cap.release()
     cv2.destroyAllWindows() 
