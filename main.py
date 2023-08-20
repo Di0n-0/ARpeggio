@@ -8,13 +8,18 @@ from ultralytics import YOLO
 import PySimpleGUI as sg
 
 def gui_init():
-    global file_path, mirror_effect, tutor, record, slowing_factor, cap
+    global file_path, dev_mode, mirror_effect, tutor, record, slowing_factor, cap, draw_index_right, draw_index_left, alpha
     sg.theme("LightGrey5")
     file_types = [("Supported Files", "*.mp4 *.txt")]
     layout_gui = [
+        [sg.Text("Developer Mode"), sg.Checkbox("", default=dev_mode, key="dev_mode", enable_events=True)],
         [sg.Text("Mirror Effect"), sg.Checkbox("", default=mirror_effect, key="mirror_effect", enable_events=True)],
         [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
+        [sg.Text("Alpha Value", key="alpha_value_text"), sg.Slider(range=(0, 10), default_value=alpha*10, orientation="h", key="alpha", enable_events=True)],
         [sg.InputText(default_text=file_path, key="-FILE-", enable_events=True), sg.FileBrowse(file_types=file_types)],
+        [sg.Text("Right Hand"), sg.InputText(default_text=draw_index_right, key="right_hand", enable_events=True)],
+        [sg.Text("Left Hand"), sg.InputText(default_text=draw_index_left, key="left_hand", enable_events=True)],
+        [sg.Image("hand_landmarks.png")],
         [sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
     ]
     window_gui = sg.Window("Settings", layout_gui)
@@ -30,10 +35,16 @@ def gui_init():
                     cv2.destroyAllWindows()
                 window_gui.close()
                 sys.exit()
-            elif event == '-FILE-':
-                file_path = values['-FILE-']  
+            elif event == "-FILE-":
+                file_path = values["-FILE-"]  
+            elif event == "right_hand":
+                draw_index_right = values["right_hand"]
+            elif event == "left_hand":
+                draw_index_left = values["left_hand"]
+            dev_mode = values["dev_mode"]
             mirror_effect = values["mirror_effect"]
             slowing_factor = values["slowing_factor"]
+            alpha = values["alpha"] / 10
             if file_path.endswith(".txt"):
                 tutor = True
                 record = False
@@ -131,21 +142,20 @@ class HandDetector:
                     self.mpDraw.draw_landmarks(draw_img, handLms, self.mpHands.HAND_CONNECTIONS)
                     cv2.rectangle(draw_img, (bbox[0] - 20, bbox[1] - 20), (bbox[0] + bbox[2] + 20, bbox[1] + bbox[3] + 20), (255, 0, 255), 2)
                     cv2.putText(draw_img, myHand["type"], (bbox[0] - 30, bbox[1] - 30), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 255), 2)
-        if draw:
-            return allHands, img
-        else:
-            return allHands
+        return allHands
 
 def object_detect(img, model, sub_window_coord):
+    global dev_mode
     results = model(img)[0]
     cropped_img = None
 
     for result in results.boxes.data.tolist():
         x1, y1, x2, y2, score, class_id = result
         if score > threshold_detect:
-            cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 4)
-            cv2.putText(img, results.names[int(class_id)], (int(x1), int(y1 - 10)),
-                        cv2.FONT_HERSHEY_PLAIN, 1.3, (0, 0, 255), 3, cv2.LINE_AA)
+            if dev_mode:
+                cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0, 0, 255), 4)
+                cv2.putText(img, results.names[int(class_id)], (int(x1), int(y1 - 10)),
+                            cv2.FONT_HERSHEY_PLAIN, 1.3, (0, 0, 255), 3, cv2.LINE_AA)
             
             cropped_img = img[(int(y1) + img_cut_value) : (int(y2) - img_cut_value), (int(x1) + img_cut_value) : (int(x2) - img_cut_value)]
             cut_x = int(x1) + img_cut_value
@@ -156,6 +166,7 @@ def object_detect(img, model, sub_window_coord):
     return cropped_img
 
 def object_segment(img, model):
+    global dev_mode
     results = model(img)
     mask_rgba = np.zeros_like(img)
     center = [0, 0]
@@ -185,27 +196,51 @@ def object_segment(img, model):
                 center = [int(rect[0][0]), int(rect[0][1])]
                 angle = rect[2]
                 box = cv2.boxPoints(rect)
-                box = np.int0(box)
+                box = np.intp(box)
                 width_rect = rect[1][0]
                 height_rect = rect[1][1]
 
-                for img_draw in [mask_rgba, img]:
-                    cv2.drawContours(img_draw, [box], 0, (0, 0, 255), 2)
-                    cv2.circle(img_draw, center, radius=5, color=(0, 0, 255), thickness=-2)
+                if dev_mode:
+                    for img_draw in [mask_rgba, img]:
+                        cv2.drawContours(img_draw, [box], 0, (0, 0, 255), 2)
+                        cv2.circle(img_draw, center, radius=5, color=(0, 0, 255), thickness=-2)
 
     return mask_rgba, center, angle, width_rect, height_rect
 
 def draw_pre_recorded(img, landmark_list):
+    global draw_index_right, draw_index_left, alpha
+    try:
+        index_list_right = [int(num.strip()) for num in draw_index_right.split(',')]
+    except ValueError:
+        index_list_right = None
+    try:
+        index_list_left = [int(num.strip()) for num in draw_index_left.split(',')]
+    except ValueError:
+        index_list_left = None
+
     line_list = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11), (11, 12), (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (0, 17), (17, 18), (18, 19), (19, 20)]
-    overlay = img.copy()
+    line_list_right = []
+    line_list_left = []
     for line in line_list:
-        if len(landmark_list) >= 21:
+        if index_list_right is not None:
+            if line[0] in index_list_right and line[1] in index_list_right:
+                line_list_right.append(line)
+        if index_list_left is not None:
+            if line[0] in index_list_left and line[1] in index_list_left:
+                line_list_left.append(line)
+    overlay = img.copy()
+    if index_list_left is not None:
+        for line in line_list_left:
             cv2.line(overlay, (landmark_list[line[0]][0], landmark_list[line[0]][1]), (landmark_list[line[1]][0], landmark_list[line[1]][1]), (255, 255, 255, 128), thickness=2)
-        if len(landmark_list) == 42:
+    if index_list_right is not None:
+        for line in line_list_right:
             cv2.line(overlay, (landmark_list[line[0] + 21][0], landmark_list[line[0] + 21][1]), (landmark_list[line[1] + 21][0], landmark_list[line[1] + 21][1]), (255, 255, 255, 128), thickness=2)
-    for landmark in landmark_list:
-        cv2.circle(overlay, (landmark[0], landmark[1]), radius=5, color=(186, 85, 211, 128), thickness=-2)
-    alpha = 0.7
+    if index_list_left is not None:
+        for index in index_list_left:
+            cv2.circle(overlay, (landmark_list[index][0], landmark_list[index][1]), radius=4, color=(186, 85, 211, 128), thickness=-1)
+    if index_list_right is not None:
+        for index in index_list_right:
+            cv2.circle(overlay, (landmark_list[index + 21][0], landmark_list[index + 21][1]), radius=4, color=(186, 85, 211, 128), thickness=-1)
     img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
     return img
 
@@ -262,8 +297,8 @@ def proc_guitar(img):
     return None
 
 def proc_hands(img_detect, img_draw):
-    global detector
-    hands, img = detector.findHands(img_detect, img_draw, draw=True)
+    global detector, dev_mode
+    hands = detector.findHands(img_detect, img_draw, draw=dev_mode)
     return hands
 
 def record_hands(hands, center, angle, width_rect, height_rect):
@@ -280,7 +315,7 @@ def record_hands(hands, center, angle, width_rect, height_rect):
                 text_file.write(',')
 
 def main():
-    global model_guitar_detect, model_fretboard_detect, model_fretboard_seg, threshold_detect, img_cut_value, detector, file_path, pre_recorded, mirror_effect, tutor, record, counter, step, slowing_factor, cap
+    global model_guitar_detect, model_fretboard_detect, model_fretboard_seg, threshold_detect, img_cut_value, detector, file_path, pre_recorded, dev_mode, mirror_effect, tutor, record, counter, step, slowing_factor, cap
     handle_tweaks()
 
     if record:
@@ -308,7 +343,8 @@ def main():
         fps = 1 / (currentTime-previousTime)
         previousTime = currentTime
         
-        cv2.putText(img, str(int(fps))+" FPS", (10, 70), cv2.FONT_HERSHEY_COMPLEX, 1, (0,0,255), 2)
+        if dev_mode:
+            cv2.putText(img, str(int(fps))+" FPS", (10, 70), cv2.FONT_HERSHEY_COMPLEX, 1, (0,0,255), 2)
 
         img_hands = img.copy()
 
@@ -327,9 +363,9 @@ def main():
             img_fretboard = cv2.flip(img_fretboard, 1)
 
         cv2.imshow("img", img)
-        if img_guitar is not None:       
+        if img_guitar is not None and dev_mode:       
             cv2.imshow("img_guitar", img_guitar)
-        if img_fretboard is not None:
+        if img_fretboard is not None and dev_mode:
             cv2.imshow("img_fretboard", img_fretboard)
         
         if cv2.waitKey(1) == 27:
@@ -352,9 +388,15 @@ img_cut_value = 0
 file_path = ""
 pre_recorded = []
 
+dev_mode = False
 mirror_effect = False
 record = False
 tutor = True
+
+draw_index_right = "0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
+draw_index_left = "0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
+
+alpha = 0.7
 
 counter = 0
 step = 129
