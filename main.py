@@ -17,8 +17,8 @@ def gui_init():
         [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
         [sg.Text("Alpha Value", key="alpha_value_text"), sg.Slider(range=(0, 10), default_value=alpha*10, orientation="h", key="alpha", enable_events=True)],
         [sg.InputText(default_text=file_path, key="-FILE-", enable_events=True), sg.FileBrowse(file_types=file_types)],
-        [sg.Text("Right Hand"), sg.InputText(default_text=draw_index_right, key="right_hand", enable_events=True)],
-        [sg.Text("Left Hand"), sg.InputText(default_text=draw_index_left, key="left_hand", enable_events=True)],
+        [sg.Text("Hand 0"), sg.InputText(default_text=draw_index_right, key="right_hand", enable_events=True)],
+        [sg.Text("Hand 1"), sg.InputText(default_text=draw_index_left, key="left_hand", enable_events=True)],
         [sg.Image("hand_landmarks.png")],
         [sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
     ]
@@ -139,7 +139,11 @@ class HandDetector:
 
                 ## draw
                 if draw:
-                    self.mpDraw.draw_landmarks(draw_img, handLms, self.mpHands.HAND_CONNECTIONS)
+                    try:
+                        self.mpDraw.draw_landmarks(draw_img, handLms, self.mpHands.HAND_CONNECTIONS)
+                    except AttributeError:
+                        print(draw_img)
+                        continue
                     cv2.rectangle(draw_img, (bbox[0] - 20, bbox[1] - 20), (bbox[0] + bbox[2] + 20, bbox[1] + bbox[3] + 20), (255, 0, 255), 2)
                     cv2.putText(draw_img, myHand["type"], (bbox[0] - 30, bbox[1] - 30), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 255), 2)
         return allHands
