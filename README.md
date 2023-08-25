@@ -18,6 +18,7 @@ I'm proud of the progress I've made with ARpeggio, and I can't wait to bring it 
   - *Consider the steadfast guitar angle for quality. It is not commanded, but a wise path to follow.*
 
 **Contributing**
+
 If you're a developer who knows Python:
 - I have encountered some difficulties in creating an executable. Initially, I attempted to build it as a Docker image, but I abandoned that approach due to the complexity of sharing X Server access with regular users. Furthermore, options like Pyinstaller are not suitable for generating a Windows build since I primarily use Linux.
 - My code could benefit from further cleaning and refinement.
@@ -28,9 +29,6 @@ If you're a developer who knows C/C++ and fulfill the requirements outlined in t
 
 If you're a developer who wishes to port this program to another language such as Java or JavaScript:
 - Your altruism is truly commendable! I've had a strong desire to produce an Android and web version of the program for a long time now, but my experience with Java is extremely limited, and I possess no knowledge of JavaScript. As a result, you would need to take the lead in this endeavor.
-
-If you're proficient in the German language:
-- Ich begehre auch wie die Muttersprachler sprechen zu können, es wär' doch geil, wenn ich mich mit jemandem regelmäßig unterhalten könnte
 
 ### Updates
 **No new updates...**
