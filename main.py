@@ -8,11 +8,13 @@ from ultralytics import YOLO
 import PySimpleGUI as sg
 
 def gui_init():
-    global file_path, dev_mode, mirror_effect, tutor, record, slowing_factor, cap, draw_index_right, draw_index_left, alpha
+    global file_path, dev_mode, show_hands, show_fretboard, mirror_effect, tutor, record, slowing_factor, cap, draw_index_right, draw_index_left, alpha
     sg.theme("LightGrey5")
     file_types = [("Supported Files", "*.mp4 *.txt")]
     layout_gui = [
         [sg.Text("Developer Mode"), sg.Checkbox("", default=dev_mode, key="dev_mode", enable_events=True)],
+        [sg.Text("Hands"), sg.Checkbox("", default=show_hands, key="hands", enable_events=True)],
+        [sg.Text("Fretboard"), sg.Checkbox("", default=show_fretboard, key="fretboard", enable_events=True)],
         [sg.Text("Mirror Effect"), sg.Checkbox("", default=mirror_effect, key="mirror_effect", enable_events=True)],
         [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
         [sg.Text("Alpha Value", key="alpha_value_text"), sg.Slider(range=(0, 10), default_value=alpha*10, orientation="h", key="alpha", enable_events=True)],
@@ -42,6 +44,8 @@ def gui_init():
             elif event == "left_hand":
                 draw_index_left = values["left_hand"]
             dev_mode = values["dev_mode"]
+            show_hands = values["hands"]
+            show_fretboard = values["fretboard"]
             mirror_effect = values["mirror_effect"]
             slowing_factor = values["slowing_factor"]
             alpha = values["alpha"] / 10
@@ -170,7 +174,7 @@ def object_detect(img, model, sub_window_coord):
     return cropped_img
 
 def object_segment(img, model):
-    global dev_mode
+    global dev_mode, centers_weights
     results = model(img)
     mask_rgba = np.zeros_like(img)
     center = [0, 0]
@@ -198,6 +202,43 @@ def object_segment(img, model):
             if max_contour is not None:
                 rect = cv2.minAreaRect(max_contour)
                 center = [int(rect[0][0]), int(rect[0][1])]
+                
+                '''
+                EXPONENTIAL MOVING AVERAGE
+
+                alpha = 0.2  # EMA smoothing factor (adjust as needed)
+                center = [int(rect[0][0]), int(rect[0][1])]
+                if centers_weights:
+                    prev_center_weighted = centers_weights[-1][0]
+                    center_weighted = [
+                        alpha * center[0] + (1 - alpha) * prev_center_weighted[0],
+                        alpha * center[1] + (1 - alpha) * prev_center_weighted[1]
+                    ]
+                else:
+                    center_weighted = center
+
+                centers_weights.append((center_weighted, len(centers_weights)))
+                '''
+
+
+                '''
+                WEIGHTED MOVING AVERAGE
+
+                center = [int(rect[0][0]), int(rect[0][1])]
+                centers_weights.append((center, len(centers_weights)))
+                center_weighted = [0, 0] 
+                total_weight = 0
+
+                for center, weight in centers_weights:
+                    center_weighted[0] += center[0] * weight
+                    center_weighted[1] += center[1] * weight
+                    total_weight += weight
+
+                if total_weight != 0:
+                    center_weighted[0] /= total_weight
+                    center_weighted[1] /= total_weight
+                '''
+
                 angle = rect[2]
                 box = cv2.boxPoints(rect)
                 box = np.intp(box)
@@ -212,7 +253,7 @@ def object_segment(img, model):
     return mask_rgba, center, angle, width_rect, height_rect
 
 def draw_pre_recorded(img, landmark_list):
-    global draw_index_right, draw_index_left, alpha
+    global draw_index_right, draw_index_left, alpha, show_hands, show_fretboard
     try:
         index_list_right = [int(num.strip()) for num in draw_index_right.split(',')]
     except ValueError:
@@ -221,31 +262,34 @@ def draw_pre_recorded(img, landmark_list):
         index_list_left = [int(num.strip()) for num in draw_index_left.split(',')]
     except ValueError:
         index_list_left = None
-
-    line_list = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11), (11, 12), (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (0, 17), (17, 18), (18, 19), (19, 20)]
-    line_list_right = []
-    line_list_left = []
-    for line in line_list:
-        if index_list_right is not None:
-            if line[0] in index_list_right and line[1] in index_list_right:
-                line_list_right.append(line)
+    
+    if show_hands:
+        line_list = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9), (9, 10), (10, 11), (11, 12), (9, 13), (13, 14), (14, 15), (15, 16), (13, 17), (0, 17), (17, 18), (18, 19), (19, 20)]
+        line_list_right = []
+        line_list_left = []
+        for line in line_list:
+            if index_list_right is not None:
+                if line[0] in index_list_right and line[1] in index_list_right:
+                    line_list_right.append(line)
+            if index_list_left is not None:
+                if line[0] in index_list_left and line[1] in index_list_left:
+                    line_list_left.append(line)
+        overlay = img.copy()
         if index_list_left is not None:
-            if line[0] in index_list_left and line[1] in index_list_left:
-                line_list_left.append(line)
-    overlay = img.copy()
-    if index_list_left is not None:
-        for line in line_list_left:
-            cv2.line(overlay, (landmark_list[line[0]][0], landmark_list[line[0]][1]), (landmark_list[line[1]][0], landmark_list[line[1]][1]), (255, 255, 255, 128), thickness=2)
-    if index_list_right is not None:
-        for line in line_list_right:
-            cv2.line(overlay, (landmark_list[line[0] + 21][0], landmark_list[line[0] + 21][1]), (landmark_list[line[1] + 21][0], landmark_list[line[1] + 21][1]), (255, 255, 255, 128), thickness=2)
-    if index_list_left is not None:
-        for index in index_list_left:
-            cv2.circle(overlay, (landmark_list[index][0], landmark_list[index][1]), radius=4, color=(186, 85, 211, 128), thickness=-1)
-    if index_list_right is not None:
-        for index in index_list_right:
-            cv2.circle(overlay, (landmark_list[index + 21][0], landmark_list[index + 21][1]), radius=4, color=(186, 85, 211, 128), thickness=-1)
-    img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+            for line in line_list_left:
+                cv2.line(overlay, (landmark_list[line[0]][0], landmark_list[line[0]][1]), (landmark_list[line[1]][0], landmark_list[line[1]][1]), (255, 255, 255, 128), thickness=2)
+        if index_list_right is not None:
+            for line in line_list_right:
+                cv2.line(overlay, (landmark_list[line[0] + 21][0], landmark_list[line[0] + 21][1]), (landmark_list[line[1] + 21][0], landmark_list[line[1] + 21][1]), (255, 255, 255, 128), thickness=2)
+        if index_list_left is not None:
+            for index in index_list_left:
+                cv2.circle(overlay, (landmark_list[index][0], landmark_list[index][1]), radius=4, color=(186, 85, 211, 128), thickness=-1)
+        if index_list_right is not None:
+            for index in index_list_right:
+                cv2.circle(overlay, (landmark_list[index + 21][0], landmark_list[index + 21][1]), radius=4, color=(186, 85, 211, 128), thickness=-1)
+        img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+    if show_fretboard:
+        pass
     return img
 
 def tutor_hands(img, center, angle, width_rect, height_rect):
@@ -329,7 +373,7 @@ def main():
             print("There is no such video file, exiting")
             sys.exit()
     else:
-        cap = cv2.VideoCapture(0)#0
+        cap = cv2.VideoCapture("test2.mp4")#0 #test1.mp4
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -382,7 +426,7 @@ def main():
 
 model_guitar_detect = YOLO("guitar_detect.pt")
 model_fretboard_detect = YOLO("fretboard_detect.pt")
-threshold_detect = 0.3
+threshold_detect = 0.5
 
 model_fretboard_seg = YOLO("fretboard_seg.pt")
 
@@ -393,10 +437,14 @@ img_cut_value = 0
 file_path = ""
 pre_recorded = []
 
+centers_weights = []
+
 dev_mode = False
 mirror_effect = False
 record = False
 tutor = True
+show_hands = True
+show_fretboard = True
 
 draw_index_right = "0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
 draw_index_left = "0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20"
