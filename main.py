@@ -244,7 +244,8 @@ def object_segment(img, model):
                 height_rect = rect[1][1]
                 box = cv2.boxPoints(rect)
                 box = np.intp(box)
-                sorted_points = box[np.argsort(box[:, 1])]
+                sorted_points = box[np.argsort(box[:, 1])[::-1]]
+                point1, point2 = sorted_points[:2]
                 point1 = list(sorted_points[0])
                 point1[0] = mask_rgba.shape[0] - point1[0]
                 point2 = list(sorted_points[1])
@@ -255,12 +256,16 @@ def object_segment(img, model):
                     guitar_strings.append((tan, (i*(point2[0]-tan*point2[1]) + (7-i)*(point1[0]-tan*point1[1]))/7))
                 
                 fret_count = 19
-                fret_cal = lambda x : (height_rect*np.power(2, fret_count/12)/(np.power(2, fret_count/12)-1) - height_rect*np.power(2, fret_count/12)/(np.power(2, fret_count/12)-1)/np.power(2, x/12))
-                fret_distance = [fret_cal(i) for i in range(1, fret_count + 1)]
+                fret_cal = lambda x : height_rect-(height_rect*np.power(2, fret_count/12)/(np.power(2, fret_count/12)-1) - height_rect*np.power(2, fret_count/12)/(np.power(2, fret_count/12)-1)/np.power(2, x/12))
+                fret_distance = [fret_cal(i) for i in range(0, fret_count + 1)]
                 guitar_frets = []
-                cot = 1/np.tan(np.deg2rad(angle))
+                cot = 1/tan
                 for d in fret_distance:
-                    guitar_frets.append((-cot, (point1[0]+cot*point1[1]) + d*(np.sqrt(1 + np.square(cot)))))
+                    guitar_frets.append((-cot, (point1[0]+cot*point1[1]) - d*(np.sqrt(1 + np.square(cot)))))
+                
+                guitar_fret_mids = []
+                for i in range(0, len(guitar_frets) - 1):
+                    guitar_fret_mids.append((-cot, (guitar_frets[i][1]+guitar_frets[i+1][1])/2))
 
                 if dev_mode:
                     for img_draw in [mask_rgba, img]:
@@ -271,6 +276,8 @@ def object_segment(img, model):
                         cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_string[0] + guitar_string[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_string[0] + guitar_string[1])), mask_rgba.shape[1]), color=(255, 255, 255), thickness=2)
                     for guitar_fret in guitar_frets:
                         cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret[0] + guitar_fret[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret[0] + guitar_fret[1])), mask_rgba.shape[1]), color=(0, 255, 255), thickness=2)
+                    for guitar_fret_mid in guitar_fret_mids:
+                        cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret_mid[0] + guitar_fret_mid[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret_mid[0] + guitar_fret_mid[1])), mask_rgba.shape[1]), color=(255, 0, 255), thickness=2)
     return mask_rgba, center, angle, width_rect, height_rect
 
 def draw_pre_recorded(img, landmark_list):
