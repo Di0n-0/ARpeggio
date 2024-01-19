@@ -266,18 +266,26 @@ def object_segment(img, model):
                 guitar_fret_mids = []
                 for i in range(0, len(guitar_frets) - 1):
                     guitar_fret_mids.append((-cot, (guitar_frets[i][1]+guitar_frets[i+1][1])/2))
+                
+                intersections = []
+                for guitar_string in guitar_strings:
+                    for guitar_fret_mid in guitar_fret_mids:
+                        intersections.append(((guitar_fret_mid[1]-guitar_string[1])/(guitar_string[0]-guitar_fret_mid[0]), guitar_string[0]*(guitar_fret_mid[1]-guitar_string[1])/(guitar_string[0]-guitar_fret_mid[0]) + guitar_string[1]))
 
                 if dev_mode:
                     for img_draw in [mask_rgba, img]:
                         cv2.drawContours(img_draw, [box], 0, (0, 0, 255), 2)
                         cv2.circle(img_draw, center, radius=5, color=(0, 0, 255), thickness=-2)
+                    '''
                     for guitar_string in guitar_strings:
-                        pass
                         cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_string[0] + guitar_string[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_string[0] + guitar_string[1])), mask_rgba.shape[1]), color=(255, 255, 255), thickness=2)
                     for guitar_fret in guitar_frets:
                         cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret[0] + guitar_fret[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret[0] + guitar_fret[1])), mask_rgba.shape[1]), color=(0, 255, 255), thickness=2)
                     for guitar_fret_mid in guitar_fret_mids:
                         cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret_mid[0] + guitar_fret_mid[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret_mid[0] + guitar_fret_mid[1])), mask_rgba.shape[1]), color=(255, 0, 255), thickness=2)
+                    '''
+                    for intersection in intersections:
+                        cv2.circle(img_draw, (int(mask_rgba.shape[0] - intersection[1]), int(intersection[0])), radius=3, color=(250, 150, 0), thickness=-1)
     return mask_rgba, center, angle, width_rect, height_rect
 
 def draw_pre_recorded(img, landmark_list):
