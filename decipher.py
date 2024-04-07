@@ -1,13 +1,17 @@
-filename = "asciitab.txt"
-
-with open(filename, "r") as file:
-    blocks_txt = file.read()
-
-blocks = blocks_txt.split("\n\n")
-blocks.pop()
-
 block_index = 0
+blocks = []
 dict_guitar_strings = {"e": 0, "B": 1, "G": 2, "D": 3, "A": 4, "E": 5}
+last = []
+
+def main(filename):
+    global blocks
+    with open(filename, "r") as file:
+        blocks_txt = file.read()
+
+    blocks = blocks_txt.split("\n\n")
+    blocks.pop()
+    deci()
+    return last
 
 def sort(arr, index):
     for i in range(0, len(arr)):
@@ -20,13 +24,13 @@ def sort(arr, index):
 def calc_point(note):
     return dict_guitar_strings[note[0]] * 19 + note[1]
 
-def main():
+def deci():
     extracted = []
     temp_arr = []
     fret_groups = []
     end_product = []
 
-    global block_index
+    global block_index, last
     text = blocks[block_index]
     lines = text.split("\n")
     non_empty_lines = [line for line in lines if line.strip() != ""]
@@ -77,12 +81,8 @@ def main():
                 temp_arr.clear()
                 break
 
-
-    print(end_product)
+    last.append(end_product)
     block_index += 1
     if block_index != len(blocks):
-        main()
+        deci()
 
-
-if __name__ == "__main__":
-    main()

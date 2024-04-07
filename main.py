@@ -6,69 +6,7 @@ import numpy as np
 import mediapipe as mp
 from ultralytics import YOLO
 import PySimpleGUI as sg
-
-def gui_init():
-    global file_path, dev_mode, show_hands, show_fretboard, mirror_effect, tutor, record, slowing_factor, cap, draw_index_right, draw_index_left, alpha
-    sg.theme("LightGrey5")
-    file_types = [("Supported Files", "*.mp4 *.txt")]
-    layout_gui = [
-        [sg.Text("Developer Mode"), sg.Checkbox("", default=dev_mode, key="dev_mode", enable_events=True)],
-        [sg.Text("Hands"), sg.Checkbox("", default=show_hands, key="hands", enable_events=True)],
-        [sg.Text("Fretboard"), sg.Checkbox("", default=show_fretboard, key="fretboard", enable_events=True)],
-        [sg.Text("Mirror Effect"), sg.Checkbox("", default=mirror_effect, key="mirror_effect", enable_events=True)],
-        [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
-        [sg.Text("Alpha Value", key="alpha_value_text"), sg.Slider(range=(0, 10), default_value=alpha*10, orientation="h", key="alpha", enable_events=True)],
-        [sg.InputText(default_text=file_path, key="-FILE-", enable_events=True), sg.FileBrowse(file_types=file_types)],
-        [sg.Text("Hand 0"), sg.InputText(default_text=draw_index_right, key="right_hand", enable_events=True)],
-        [sg.Text("Hand 1"), sg.InputText(default_text=draw_index_left, key="left_hand", enable_events=True)],
-        [sg.Image("hand_landmarks.png")],
-        [sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
-    ]
-    window_gui = sg.Window("Settings", layout_gui)
-
-    while True:
-        event, values = window_gui.read()
-        if event == sg.WINDOW_CLOSED:
-            break
-        if event is not None:
-            if event == "exit":
-                if cap is not None:
-                    cap.release()
-                    cv2.destroyAllWindows()
-                window_gui.close()
-                sys.exit()
-            elif event == "-FILE-":
-                file_path = values["-FILE-"]  
-            elif event == "right_hand":
-                draw_index_right = values["right_hand"]
-            elif event == "left_hand":
-                draw_index_left = values["left_hand"]
-            dev_mode = values["dev_mode"]
-            show_hands = values["hands"]
-            show_fretboard = values["fretboard"]
-            mirror_effect = values["mirror_effect"]
-            slowing_factor = values["slowing_factor"]
-            alpha = values["alpha"] / 10
-            if file_path.endswith(".txt"):
-                tutor = True
-                record = False
-            elif file_path.endswith(".mp4"):
-                tutor = False
-                record = True
-
-    window_gui.close()
-
-def handle_tweaks():
-    global tutor, file_path, pre_recorded
-    gui_init()
-    if tutor:
-        try:
-            with open(file_path, 'r') as text_file:
-                data = text_file.read().rstrip(',')
-                pre_recorded = [float(x) for x in data.split(',')]
-        except FileNotFoundError:
-            print("There is no such pre-recorded file, exiting")
-            sys.exit()
+import decipher as deci
 
 class HandDetector:
     """
@@ -152,8 +90,86 @@ class HandDetector:
                     cv2.putText(draw_img, myHand["type"], (bbox[0] - 30, bbox[1] - 30), cv2.FONT_HERSHEY_PLAIN, 2, (255, 0, 255), 2)
         return allHands
 
+def gui_init():
+    global file_path, file_path_tab, dev_mode, show_hands, show_fretboard, mirror_effect, ascii_tutor, tutor, record, slowing_factor, draw_index_right, draw_index_left, alpha
+    sg.theme("LightGrey5")
+    file_types = [("Supported Files", "*.mp4 *.txt")]
+    layout_gui = [
+        [sg.Text("Developer Mode"), sg.Checkbox("", default=dev_mode, key="dev_mode", enable_events=True)],
+        [sg.Text("Hands"), sg.Checkbox("", default=show_hands, key="hands", enable_events=True)],
+        [sg.Text("Fretboard"), sg.Checkbox("", default=show_fretboard, key="fretboard", enable_events=True)],
+        [sg.Text("Mirror Effect"), sg.Checkbox("", default=mirror_effect, key="mirror_effect", enable_events=True)],
+        [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
+        [sg.Text("Alpha Value", key="alpha_value_text"), sg.Slider(range=(0, 10), default_value=alpha*10, orientation="h", key="alpha", enable_events=True)],
+        [sg.InputText(default_text=file_path, key="-FILE-", enable_events=True), sg.FileBrowse(file_types=file_types)],
+        [sg.InputText(default_text=file_path_tab, key="-FILE_TAB-", enable_events=True), sg.FileBrowse(file_types=(("Text Files", "*.txt"),))],
+        [sg.Text("Hand 0"), sg.InputText(default_text=draw_index_right, key="right_hand", enable_events=True)],
+        [sg.Text("Hand 1"), sg.InputText(default_text=draw_index_left, key="left_hand", enable_events=True)],
+        [sg.Image("hand_landmarks.png")],
+        [sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
+    ]
+    window_gui = sg.Window("Settings", layout_gui)
+
+    while True:
+        event, values = window_gui.read()
+        if event == sg.WINDOW_CLOSED:
+            break
+        if event is not None:
+            if event == "exit":
+                if cap is not None:
+                    cap.release()
+                    cv2.destroyAllWindows()
+                window_gui.close()
+                sys.exit()
+            elif event == "-FILE-":
+                file_path = values["-FILE-"]  
+            elif event == "-FILE_TAB-":
+                file_path_tab = values["-FILE_TAB-"]
+            elif event == "right_hand":
+                draw_index_right = values["right_hand"]
+            elif event == "left_hand":
+                draw_index_left = values["left_hand"]
+            dev_mode = values["dev_mode"]
+            show_hands = values["hands"]
+            show_fretboard = values["fretboard"]
+            mirror_effect = values["mirror_effect"]
+            slowing_factor = values["slowing_factor"]
+            alpha = values["alpha"] / 10
+            if file_path.endswith(".txt"):
+                tutor = True
+                record = False
+                ascii_tutor = False
+            elif file_path.endswith(".mp4"):
+                tutor = False
+                record = True
+                ascii_tutor = False
+            else:
+                tutor = False
+                record = False
+                if file_path_tab.endswith(".txt"):
+                    ascii_tutor = True
+
+    window_gui.close()
+
+def handle_tweaks():
+    global pre_recorded, deciphered_point_data
+    gui_init()
+    if tutor:
+        try:
+            with open(file_path, 'r') as text_file:
+                data = text_file.read().rstrip(',')
+                pre_recorded = [float(x) for x in data.split(',')]
+        except FileNotFoundError:
+            print("There is no such pre-recorded file, exiting")
+            sys.exit()
+    elif ascii_tutor:
+        try:
+            deciphered_point_data = deci.main(file_path_tab)
+        except FileNotFoundError:
+            print("There is no such pre-recorded file, exiting")
+            sys.exit()
+
 def object_detect(img, model, sub_window_coord):
-    global dev_mode
     results = model(img)[0]
     cropped_img = None
 
@@ -174,7 +190,6 @@ def object_detect(img, model, sub_window_coord):
     return cropped_img
 
 def object_segment(img, model):
-    global dev_mode, centers_weights
     results = model(img)
     mask_rgba = np.zeros_like(img)
     center = [0, 0]
@@ -202,42 +217,6 @@ def object_segment(img, model):
             if max_contour is not None:
                 rect = cv2.minAreaRect(max_contour)
                 center = [int(rect[0][0]), int(rect[0][1])]
-                
-                '''
-                EXPONENTIAL MOVING AVERAGE
-
-                alpha = 0.2  # EMA smoothing factor (adjust as needed)
-                center = [int(rect[0][0]), int(rect[0][1])]
-                if centers_weights:
-                    prev_center_weighted = centers_weights[-1][0]
-                    center_weighted = [
-                        alpha * center[0] + (1 - alpha) * prev_center_weighted[0],
-                        alpha * center[1] + (1 - alpha) * prev_center_weighted[1]
-                    ]
-                else:
-                    center_weighted = center
-
-                centers_weights.append((center_weighted, len(centers_weights)))
-                '''
-
-
-                '''
-                WEIGHTED MOVING AVERAGE
-
-                center = [int(rect[0][0]), int(rect[0][1])]
-                centers_weights.append((center, len(centers_weights)))
-                center_weighted = [0, 0] 
-                total_weight = 0
-
-                for center, weight in centers_weights:
-                    center_weighted[0] += center[0] * weight
-                    center_weighted[1] += center[1] * weight
-                    total_weight += weight
-
-                if total_weight != 0:
-                    center_weighted[0] /= total_weight
-                    center_weighted[1] /= total_weight
-                '''
 
                 angle = rect[2]
                 width_rect = rect[1][0]
@@ -276,20 +255,21 @@ def object_segment(img, model):
                     for img_draw in [mask_rgba, img]:
                         cv2.drawContours(img_draw, [box], 0, (0, 0, 255), 2)
                         cv2.circle(img_draw, center, radius=5, color=(0, 0, 255), thickness=-2)
-                    '''
-                    for guitar_string in guitar_strings:
-                        cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_string[0] + guitar_string[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_string[0] + guitar_string[1])), mask_rgba.shape[1]), color=(255, 255, 255), thickness=2)
-                    for guitar_fret in guitar_frets:
-                        cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret[0] + guitar_fret[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret[0] + guitar_fret[1])), mask_rgba.shape[1]), color=(0, 255, 255), thickness=2)
-                    for guitar_fret_mid in guitar_fret_mids:
-                        cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret_mid[0] + guitar_fret_mid[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret_mid[0] + guitar_fret_mid[1])), mask_rgba.shape[1]), color=(255, 0, 255), thickness=2)
-                    '''
-                    for intersection in intersections:
-                        cv2.circle(img_draw, (int(mask_rgba.shape[0] - intersection[1]), int(intersection[0])), radius=3, color=(250, 150, 0), thickness=-1)
-    return mask_rgba, center, angle, width_rect, height_rect
+                    if show_fretboard:
+                        """
+                        for guitar_string in guitar_strings:
+                            cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_string[0] + guitar_string[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_string[0] + guitar_string[1])), mask_rgba.shape[1]), color=(255, 255, 255), thickness=2)
+                        for guitar_fret in guitar_frets:
+                            cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret[0] + guitar_fret[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret[0] + guitar_fret[1])), mask_rgba.shape[1]), color=(0, 255, 255), thickness=2)
+                        for guitar_fret_mid in guitar_fret_mids:
+                            cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret_mid[0] + guitar_fret_mid[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret_mid[0] + guitar_fret_mid[1])), mask_rgba.shape[1]), color=(255, 0, 255), thickness=2)
+                        """
+                        for intersection in intersections:
+                            cv2.circle(img_draw, (int(mask_rgba.shape[0] - intersection[1]), int(intersection[0])), radius=3, color=(250, 150, 0), thickness=-1)
+
+    return mask_rgba, center, angle, width_rect, height_rect, intersections
 
 def draw_pre_recorded(img, landmark_list):
-    global draw_index_right, draw_index_left, alpha, show_hands, show_fretboard
     try:
         index_list_right = [int(num.strip()) for num in draw_index_right.split(',')]
     except ValueError:
@@ -324,12 +304,10 @@ def draw_pre_recorded(img, landmark_list):
             for index in index_list_right:
                 cv2.circle(overlay, (landmark_list[index + 21][0], landmark_list[index + 21][1]), radius=4, color=(186, 85, 211, 128), thickness=-1)
         img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
-    if show_fretboard:
-        pass
     return img
 
 def tutor_hands(img, center, angle, width_rect, height_rect):
-  global pre_recorded, counter, step, slowing_factor
+  global counter
   if width_rect > 0 and height_rect > 0:
     sub_list = pre_recorded[counter : min(counter + step, len(pre_recorded))]
     landmark_list = []
@@ -363,30 +341,41 @@ def tutor_hands(img, center, angle, width_rect, height_rect):
     else:
         counter += step
     return img
-            
+  
+def ascii_tutor_points(img, img_fretboard, sub_window_coord, intersections):
+    overlay = img.copy()
+    """
+    for point_index in deciphered_point_data:
+        if not point_index:
+            continue
+        point_index = point_index - 1
+        cv2.circle(overlay, (int(overlay.shape[0] - intersections[point_index][1]), int(intersections[point_index][0])), radius=3, color=(0, 150, 250), thickness=-1)
+    """
+    cv2.circle(overlay, (int(img_fretboard.shape[0] - intersections[4][1] + (sub_window_coord[0][0] + sub_window_coord[1][0])), int(intersections[4][0] + (sub_window_coord[0][1] + sub_window_coord[1][1]))), radius=3, color=(0, 150, 250), thickness=-1)
+    img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+    return img
+
 def proc_guitar(img):
-    global model_guitar_detect, model_fretboard_detect, model_fretboard_seg
-    
     sub_window_coord = []
     img_guitar = object_detect(img, model_guitar_detect, sub_window_coord)
     if img_guitar is not None:
         img_fretboard = object_detect(img_guitar, model_fretboard_detect, sub_window_coord)
         if img_fretboard is not None:
-            img_fretboard, center, angle, width_rect, height_rect = object_segment(img_fretboard, model_fretboard_seg)
+            img_fretboard, center, angle, width_rect, height_rect, intersections = object_segment(img_fretboard, model_fretboard_seg)
             center[0] += sub_window_coord[0][0] + sub_window_coord[1][0]
             center[1] += sub_window_coord[0][1] + sub_window_coord[1][1]
             if tutor:
                 img = tutor_hands(img, center, angle, width_rect, height_rect)
+            elif ascii_tutor:
+                img = ascii_tutor_points(img, img_fretboard, sub_window_coord,intersections)
             return img, img_guitar, img_fretboard, center, angle, width_rect, height_rect
     return None
 
 def proc_hands(img_detect, img_draw):
-    global detector, dev_mode
     hands = detector.findHands(img_detect, img_draw, draw=dev_mode)
     return hands
 
 def record_hands(hands, center, angle, width_rect, height_rect):
-    global file_path
     if hands:
         if len(hands) == 2 and width_rect > 0 and height_rect > 0:
             write_data = []
@@ -399,7 +388,7 @@ def record_hands(hands, center, angle, width_rect, height_rect):
                 text_file.write(',')
 
 def main():
-    global model_guitar_detect, model_fretboard_detect, model_fretboard_seg, threshold_detect, img_cut_value, detector, file_path, pre_recorded, dev_mode, mirror_effect, tutor, record, counter, step, slowing_factor, cap
+    global cap
     handle_tweaks()
 
     if record:
@@ -417,7 +406,7 @@ def main():
     previousTime = 0
     currentTime = 0
 
-    while tutor or record:
+    while tutor or record or ascii_tutor:
         success, img = cap.read()
         if success is False:
             break
@@ -462,7 +451,7 @@ def main():
 
 model_guitar_detect = YOLO("guitar_detect.pt")
 model_fretboard_detect = YOLO("fretboard_detect.pt")
-threshold_detect = 0.5
+threshold_detect = 0.8
 
 model_fretboard_seg = YOLO("fretboard_seg.pt")
 
@@ -470,15 +459,16 @@ detector = HandDetector(detectionCon=0.8, maxHands=2)
 
 img_cut_value = 0
 
-file_path = ""
+file_path = "A video to be analysed or a text file of an analysed video"
+file_path_tab = "ASCII Tablature"
 pre_recorded = []
+deciphered_point_data = []
 
-centers_weights = []
-
-dev_mode = False
+dev_mode = True
 mirror_effect = False
 record = False
-tutor = True
+tutor = False
+ascii_tutor = False
 show_hands = True
 show_fretboard = True
 
