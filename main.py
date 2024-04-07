@@ -154,7 +154,7 @@ def gui_init():
 def handle_tweaks():
     global pre_recorded, deciphered_point_data
     gui_init()
-    if tutor:
+    if tutor and not len(pre_recorded):
         try:
             with open(file_path, 'r') as text_file:
                 data = text_file.read().rstrip(',')
@@ -162,7 +162,7 @@ def handle_tweaks():
         except FileNotFoundError:
             print("There is no such pre-recorded file, exiting")
             sys.exit()
-    elif ascii_tutor:
+    elif ascii_tutor and not len(deciphered_point_data):
         try:
             deciphered_point_data = deci.main(file_path_tab)
         except FileNotFoundError:
@@ -351,7 +351,7 @@ def ascii_tutor_points(img, img_fretboard, sub_window_coord, intersections):
         point_index = point_index - 1
         cv2.circle(overlay, (int(overlay.shape[0] - intersections[point_index][1]), int(intersections[point_index][0])), radius=3, color=(0, 150, 250), thickness=-1)
     """
-    cv2.circle(overlay, (int(img_fretboard.shape[0] - intersections[4][1] + (sub_window_coord[0][0] + sub_window_coord[1][0])), int(intersections[4][0] + (sub_window_coord[0][1] + sub_window_coord[1][1]))), radius=3, color=(0, 150, 250), thickness=-1)
+    cv2.circle(overlay, (int(img_fretboard.shape[0] - intersections[1][1] + (sub_window_coord[0][0] + sub_window_coord[1][0])), int(intersections[1][0] + (sub_window_coord[0][1] + sub_window_coord[1][1]))), radius=3, color=(0, 150, 250), thickness=-1)
     img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
     return img
 
