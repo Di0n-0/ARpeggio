@@ -259,15 +259,14 @@ def object_segment(img, model):
                         """
                         for guitar_string in guitar_strings:
                             cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_string[0] + guitar_string[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_string[0] + guitar_string[1])), mask_rgba.shape[1]), color=(255, 255, 255), thickness=2)
-                        for guitar_fret in guitar_frets:
+                         for guitar_fret in guitar_frets:
                             cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret[0] + guitar_fret[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret[0] + guitar_fret[1])), mask_rgba.shape[1]), color=(0, 255, 255), thickness=2)
                         for guitar_fret_mid in guitar_fret_mids:
                             cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret_mid[0] + guitar_fret_mid[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret_mid[0] + guitar_fret_mid[1])), mask_rgba.shape[1]), color=(255, 0, 255), thickness=2)
                         """
                         for intersection in intersections:
                             cv2.circle(img_draw, (int(mask_rgba.shape[0] - intersection[1]), int(intersection[0])), radius=3, color=(250, 150, 0), thickness=-1)
-
-    return mask_rgba, center, angle, width_rect, height_rect, intersections
+    return mask_rgba, center, angle, width_rect, height_rect, intersections, guitar_strings
 
 def draw_pre_recorded(img, landmark_list):
     try:
@@ -307,7 +306,7 @@ def draw_pre_recorded(img, landmark_list):
     return img
 
 def tutor_hands(img, center, angle, width_rect, height_rect):
-  global counter
+  global counter, previous_time
   if width_rect > 0 and height_rect > 0:
     sub_list = pre_recorded[counter : min(counter + step, len(pre_recorded))]
     landmark_list = []
@@ -335,29 +334,36 @@ def tutor_hands(img, center, angle, width_rect, height_rect):
 
         landmark_list.append([round(x_rotated), round(y_rotated), round(z)])
     img = draw_pre_recorded(img, landmark_list)
+    current_time = int(time.time())
     if slowing_factor != 0:
-        if int(time.time()) % slowing_factor == 0:
+        if previous_time != current_time and current_time % slowing_factor == 0:
+            previous_time = current_time
             counter += step
     else:
         counter += step
     return img
   
-def ascii_tutor_points(img, img_fretboard, sub_window_coord, intersections):
-    global counter_tab
+def ascii_tutor_points(img, img_fretboard, sub_window_coord, intersections, guitar_strings):
+    global counter_tab, previous_time
     overlay = img.copy()
 
     for point_index in deciphered_point_data[counter_tab]:
-        if not point_index:
-            continue
-        point_index -= 1
-        cv2.circle(overlay, (int(img_fretboard.shape[0] - intersections[point_index][1] + (sub_window_coord[0][0] + sub_window_coord[1][0])), int(intersections[point_index][0] + (sub_window_coord[0][1] + sub_window_coord[1][1]))), radius=3, color=(0, 150, 250), thickness=-1)
+        if point_index < 0:
+            cv2.line(overlay, (int(img_fretboard.shape[0] - (0 * guitar_strings[-point_index - 1][0] + guitar_strings[-point_index - 1][1])) + (sub_window_coord[0][0] + sub_window_coord[1][0]), 0 + (sub_window_coord[0][1] + sub_window_coord[1][1])), (int(img_fretboard.shape[0] - (img_fretboard.shape[1] * guitar_strings[-point_index - 1][0] + guitar_strings[-point_index - 1][1])) + (sub_window_coord[0][0] + sub_window_coord[1][0]), img_fretboard.shape[1] + (sub_window_coord[0][1] + sub_window_coord[1][1])), color=(0, 150, 250), thickness=2)
+        else:
+            point_index -= 1
+            cv2.circle(overlay, (int(img_fretboard.shape[0] - intersections[point_index][1] + (sub_window_coord[0][0] + sub_window_coord[1][0])), int(intersections[point_index][0] + (sub_window_coord[0][1] + sub_window_coord[1][1]))), radius=3, color=(0, 150, 250), thickness=-1)
+    
     img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+
+    current_time = int(time.time())
     if slowing_factor != 0:
-        if int(time.time()) % slowing_factor == 0:
-            if counter_tab != len(deciphered_point_data):
+        if previous_time != current_time and current_time % slowing_factor == 0:
+            previous_time = current_time
+            if counter_tab != len(deciphered_point_data) - 1:
                 counter_tab += 1
     else:
-        if counter_tab != len(deciphered_point_data):
+        if counter_tab != len(deciphered_point_data) - 1:
             counter_tab += 1
     return img
 
@@ -367,13 +373,13 @@ def proc_guitar(img):
     if img_guitar is not None:
         img_fretboard = object_detect(img_guitar, model_fretboard_detect, sub_window_coord)
         if img_fretboard is not None:
-            img_fretboard, center, angle, width_rect, height_rect, intersections = object_segment(img_fretboard, model_fretboard_seg)
+            img_fretboard, center, angle, width_rect, height_rect, intersections, guitar_strings = object_segment(img_fretboard, model_fretboard_seg)
             center[0] += sub_window_coord[0][0] + sub_window_coord[1][0]
             center[1] += sub_window_coord[0][1] + sub_window_coord[1][1]
             if tutor:
                 img = tutor_hands(img, center, angle, width_rect, height_rect)
             elif ascii_tutor:
-                img = ascii_tutor_points(img, img_fretboard, sub_window_coord,intersections)
+                img = ascii_tutor_points(img, img_fretboard, sub_window_coord, intersections, guitar_strings)
             return img, img_guitar, img_fretboard, center, angle, width_rect, height_rect
     return None
 
@@ -469,6 +475,8 @@ file_path = "A video to be analysed or a text file of an analysed video"
 file_path_tab = "ASCII Tablature"
 pre_recorded = []
 deciphered_point_data = []
+
+previous_time = int(time.time())
 
 dev_mode = True
 mirror_effect = False
