@@ -40,7 +40,7 @@ def deci():
         frets.pop()
         for i in range(1, len(frets)):
             for j in range(0, len(frets[i])):
-                if frets[i][j] != "-":
+                if frets[i][j].isdigit():
                     extracted.append([frets[0], int(frets[i][j]), i, j])
 
     sort(extracted, 2)
@@ -81,7 +81,7 @@ def deci():
                 temp_arr.clear()
                 break
 
-    last.append(end_product)
+    last.extend(end_product)
     block_index += 1
     if block_index != len(blocks):
         deci()

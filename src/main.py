@@ -92,7 +92,7 @@ class HandDetector:
 
 def gui_init():
     global file_path, file_path_tab, dev_mode, show_hands, show_fretboard, mirror_effect, ascii_tutor, tutor, record, slowing_factor, draw_index_right, draw_index_left, alpha
-    sg.theme("LightGrey5")
+    sg.theme("DarkGrey15")
     file_types = [("Supported Files", "*.mp4 *.txt")]
     layout_gui = [
         [sg.Text("Developer Mode"), sg.Checkbox("", default=dev_mode, key="dev_mode", enable_events=True)],
@@ -105,7 +105,7 @@ def gui_init():
         [sg.InputText(default_text=file_path_tab, key="-FILE_TAB-", enable_events=True), sg.FileBrowse(file_types=(("Text Files", "*.txt"),))],
         [sg.Text("Hand 0"), sg.InputText(default_text=draw_index_right, key="right_hand", enable_events=True)],
         [sg.Text("Hand 1"), sg.InputText(default_text=draw_index_left, key="left_hand", enable_events=True)],
-        [sg.Image("hand_landmarks.png")],
+        [sg.Image("../assets/hand_landmarks.png")],
         [sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
     ]
     window_gui = sg.Window("Settings", layout_gui)
@@ -343,16 +343,22 @@ def tutor_hands(img, center, angle, width_rect, height_rect):
     return img
   
 def ascii_tutor_points(img, img_fretboard, sub_window_coord, intersections):
+    global counter_tab
     overlay = img.copy()
-    """
-    for point_index in deciphered_point_data:
+
+    for point_index in deciphered_point_data[counter_tab]:
         if not point_index:
             continue
-        point_index = point_index - 1
-        cv2.circle(overlay, (int(overlay.shape[0] - intersections[point_index][1]), int(intersections[point_index][0])), radius=3, color=(0, 150, 250), thickness=-1)
-    """
-    cv2.circle(overlay, (int(img_fretboard.shape[0] - intersections[1][1] + (sub_window_coord[0][0] + sub_window_coord[1][0])), int(intersections[1][0] + (sub_window_coord[0][1] + sub_window_coord[1][1]))), radius=3, color=(0, 150, 250), thickness=-1)
+        point_index -= 1
+        cv2.circle(overlay, (int(img_fretboard.shape[0] - intersections[point_index][1] + (sub_window_coord[0][0] + sub_window_coord[1][0])), int(intersections[point_index][0] + (sub_window_coord[0][1] + sub_window_coord[1][1]))), radius=3, color=(0, 150, 250), thickness=-1)
     img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
+    if slowing_factor != 0:
+        if int(time.time()) % slowing_factor == 0:
+            if counter_tab != len(deciphered_point_data):
+                counter_tab += 1
+    else:
+        if counter_tab != len(deciphered_point_data):
+            counter_tab += 1
     return img
 
 def proc_guitar(img):
@@ -398,7 +404,7 @@ def main():
             print("There is no such video file, exiting")
             sys.exit()
     else:
-        cap = cv2.VideoCapture("test2.mp4")#0 #test1.mp4
+        cap = cv2.VideoCapture("../videos/test2.mp4")#0
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
@@ -449,11 +455,11 @@ def main():
     cap.release()
     cv2.destroyAllWindows() 
 
-model_guitar_detect = YOLO("guitar_detect.pt")
-model_fretboard_detect = YOLO("fretboard_detect.pt")
+model_guitar_detect = YOLO("../models/guitar_detect.pt")
+model_fretboard_detect = YOLO("../models/fretboard_detect.pt")
 threshold_detect = 0.8
 
-model_fretboard_seg = YOLO("fretboard_seg.pt")
+model_fretboard_seg = YOLO("../models/fretboard_seg.pt")
 
 detector = HandDetector(detectionCon=0.8, maxHands=2)
 
@@ -479,6 +485,7 @@ alpha = 0.7
 
 counter = 0
 step = 129
+counter_tab = 0
 slowing_factor = 0
 
 cap = None
