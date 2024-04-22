@@ -87,7 +87,6 @@ def deci():
                 break
     
     last.extend(end_product)
-    print(last)
     block_index += 1
     if block_index != len(blocks):
         deci()

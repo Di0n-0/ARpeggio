@@ -424,7 +424,7 @@ def main():
             print("There is no such video file, exiting")
             sys.exit()
     else:
-        cap = cv2.VideoCapture(0)#0 ../videos/Na Praia -Per-Olov Kindgren-.mp4"
+        cap = cv2.VideoCapture("../videos/Rain by Per-Olov Kindgren.mp4")#0 ../videos/Na Praia -Per-Olov Kindgren-.mp4"
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
