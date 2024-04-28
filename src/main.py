@@ -12,7 +12,7 @@ def gui_init():
     sg.theme("DarkGrey15")
     layout_gui = [
         [sg.Text("Developer Mode"), sg.Checkbox("", default=dev_mode, key="dev_mode", enable_events=True)],
-        [sg.Text("Fretboard"), sg.Checkbox("", default=show_fretboard, key="fretboard", enable_events=True)],
+        [sg.Text("Show Fretboard"), sg.Checkbox("", default=show_fretboard, key="fretboard", enable_events=True)],
         [sg.Text("Mirror Effect"), sg.Checkbox("", default=mirror_effect, key="mirror_effect", enable_events=True)],
         [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
         [sg.Text("Alpha Value", key="alpha_value_text"), sg.Slider(range=(0, 10), default_value=alpha*10, orientation="h", key="alpha", enable_events=True)],
@@ -61,78 +61,70 @@ def object_segment(img, model):
     guitar_strings = []
 
     if results[0].masks is not None:
-        for j, mask in enumerate(results[0].masks.data):
-            mask = (mask.cpu().numpy() * 255).astype(np.uint8)
-            mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
-            mask_rgba[:,:,0] += mask
-            mask_rgba[:,:,1] += mask
-            mask_rgba[:,:,2] += mask
+        mask = results[0].masks.data[0]
+        mask = (mask.cpu().numpy() * 255).astype(np.uint8)
+        mask = cv2.resize(mask, (img.shape[1], img.shape[0]))
+        mask_rgba[:,:,0] += mask
+        mask_rgba[:,:,1] += mask
+        mask_rgba[:,:,2] += mask
 
-            contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            max_area = 0
-            max_contour = None
-            for contour in contours:
-                area = cv2.contourArea(contour)
-                if area > max_area:
-                    max_area = area
-                    max_contour = contour
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            if max_contour is not None:
-                rect = cv2.minAreaRect(max_contour)
+        if contours[0] is not None:
+            rect = cv2.minAreaRect(contours[0])
 
-                angle = rect[2]
-                if not angle:
-                    break
-                height_rect = rect[1][1]
-                box = cv2.boxPoints(rect)
-                box = np.intp(box)
-                sorted_points = box[np.argsort(box[:, 1])[::-1]]
-                point1, point2 = sorted_points[:2]
-                point1 = list(sorted_points[0])
-                point1[0] = mask_rgba.shape[0] - point1[0]
-                point2 = list(sorted_points[1])
-                point2[0] = mask_rgba.shape[0] - point2[0]
+            angle = rect[2]
+            if not angle:
+                return intersections, guitar_strings
+            
+            height_rect = rect[1][1]
+            box = cv2.boxPoints(rect)
+            box = np.intp(box)
+            sorted_points = box[np.argsort(box[:, 1])[::-1]]
+            point1, point2 = sorted_points[:2]
+            point1 = list(sorted_points[0])
+            point1[0] = mask_rgba.shape[0] - point1[0]
+            point2 = list(sorted_points[1])
+            point2[0] = mask_rgba.shape[0] - point2[0]
 
-                tan = np.tan(np.deg2rad(angle))
-                for i in range (1,7):
-                    guitar_strings.append((tan, (i*(point2[0]-tan*point2[1]) + (7-i)*(point1[0]-tan*point1[1]))/7))
-                
-                fret_count = 19
-                scale_length = height_rect*np.power(2, fret_count/12)/(np.power(2, fret_count/12)-1)
-                fret_cal = lambda x : height_rect-(scale_length - scale_length/np.power(2, x/12))
-                fret_distance = [fret_cal(i) for i in range(0, fret_count + 1)]
-                guitar_frets = []
-                cot = 1/tan
-                for d in fret_distance:
-                    guitar_frets.append((-cot, (point1[0]+cot*point1[1]) - d*(np.sqrt(1 + np.square(cot)))))
-                
-                guitar_fret_mids = []
-                for i in range(0, len(guitar_frets) - 1):
-                    guitar_fret_mids.append((-cot, (guitar_frets[i][1]+guitar_frets[i+1][1])/2))
-                
-                
+            tan = np.tan(np.deg2rad(angle))
+            for i in range (1,7):
+                guitar_strings.append((tan, (i*(point2[0]-tan*point2[1]) + (7-i)*(point1[0]-tan*point1[1]))/7))
+            
+            fret_count = 19
+            scale_length = height_rect*np.power(2, fret_count/12)/(np.power(2, fret_count/12)-1)
+            fret_cal = lambda x : height_rect-(scale_length - scale_length/np.power(2, x/12))
+            fret_distance = [fret_cal(i) for i in range(0, fret_count + 1)]
+            guitar_frets = []
+            cot = 1/tan
+            for d in fret_distance:
+                guitar_frets.append((-cot, (point1[0]+cot*point1[1]) - d*(np.sqrt(1 + np.square(cot)))))
+            
+            guitar_fret_mids = []
+            for i in range(0, len(guitar_frets) - 1):
+                guitar_fret_mids.append((-cot, (guitar_frets[i][1]+guitar_frets[i+1][1])/2))
+            
+            
+            for guitar_string in guitar_strings:
+                for guitar_fret_mid in guitar_fret_mids:
+                    intersections.append(((guitar_fret_mid[1]-guitar_string[1])/(guitar_string[0]-guitar_fret_mid[0]), guitar_string[0]*(guitar_fret_mid[1]-guitar_string[1])/(guitar_string[0]-guitar_fret_mid[0]) + guitar_string[1]))
+            for img_draw in [mask_rgba, img]:
+                cv2.drawContours(img_draw, [box], 0, (0, 0, 255), 2)
+            if show_fretboard:
                 for guitar_string in guitar_strings:
-                    for guitar_fret_mid in guitar_fret_mids:
-                        intersections.append(((guitar_fret_mid[1]-guitar_string[1])/(guitar_string[0]-guitar_fret_mid[0]), guitar_string[0]*(guitar_fret_mid[1]-guitar_string[1])/(guitar_string[0]-guitar_fret_mid[0]) + guitar_string[1]))
-                
-                for img_draw in [mask_rgba, img]:
-                    cv2.drawContours(img_draw, [box], 0, (0, 0, 255), 2)
-                if show_fretboard:
+                    try:
+                        cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_string[0] + guitar_string[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_string[0] + guitar_string[1])), mask_rgba.shape[1]), color=(255, 255, 255), thickness=2)
+                    except cv2.error:
+                        continue
+                """
+                for guitar_fret in guitar_frets:
+                    cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret[0] + guitar_fret[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret[0] + guitar_fret[1])), mask_rgba.shape[1]), color=(0, 255, 255), thickness=2)
+                for guitar_fret_mid in guitar_fret_mids:
+                    cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret_mid[0] + guitar_fret_mid[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret_mid[0] + guitar_fret_mid[1])), mask_rgba.shape[1]), color=(255, 0, 255), thickness=2)
+                """
+                for intersection in intersections:
+                    cv2.circle(img_draw, (int(mask_rgba.shape[0] - intersection[1]), int(intersection[0])), radius=3, color=(250, 150, 0), thickness=-1)
                     
-                    for guitar_string in guitar_strings:
-                        try:
-                            cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_string[0] + guitar_string[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_string[0] + guitar_string[1])), mask_rgba.shape[1]), color=(255, 255, 255), thickness=2)
-                        except cv2.error:
-                            continue
-                    """
-                    for guitar_fret in guitar_frets:
-                        cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret[0] + guitar_fret[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret[0] + guitar_fret[1])), mask_rgba.shape[1]), color=(0, 255, 255), thickness=2)
-                    for guitar_fret_mid in guitar_fret_mids:
-                        cv2.line(img_draw, (int(mask_rgba.shape[0] - (0 * guitar_fret_mid[0] + guitar_fret_mid[1])), 0), (int(mask_rgba.shape[0] - (mask_rgba.shape[1] * guitar_fret_mid[0] + guitar_fret_mid[1])), mask_rgba.shape[1]), color=(255, 0, 255), thickness=2)
-                    """
-                    for intersection in intersections:
-                        cv2.circle(img_draw, (int(mask_rgba.shape[0] - intersection[1]), int(intersection[0])), radius=3, color=(250, 150, 0), thickness=-1)
-    
     return intersections, guitar_strings
   
 def ascii_tutor_points(img, intersections, guitar_strings):
@@ -147,7 +139,7 @@ def ascii_tutor_points(img, intersections, guitar_strings):
                 continue
         else:
             point_index -= 1
-            cv2.circle(overlay, (int(img.shape[0] - intersections[point_index][1]), int(intersections[point_index][0])), radius=9, color=(68,214,44), thickness=-1)
+            cv2.circle(overlay, (int(img.shape[0] - intersections[point_index][1]), int(intersections[point_index][0])), radius=7, color=(68,214,44), thickness=-1)
     
     img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
 
@@ -173,7 +165,7 @@ def main():
     handle_tweaks()
 
    
-    cap = cv2.VideoCapture("../videos/test2.mp4")#0 ../videos/Na Praia -Per-Olov Kindgren-.mp4"
+    cap = cv2.VideoCapture("../videos/Na Praia -Per-Olov Kindgren-.mp4")#0 ../videos/Na Praia -Per-Olov Kindgren-.mp4"
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
