@@ -69,9 +69,16 @@ def object_segment(img, model):
         mask_rgba[:,:,2] += mask
 
         contours, hierarchy = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        max_area = 0
+        max_contour = None
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > max_area:
+                max_area = area
+                max_contour = contour
 
-        if contours[0] is not None:
-            rect = cv2.minAreaRect(contours[0])
+        if max_contour is not None:
+            rect = cv2.minAreaRect(max_contour)
 
             angle = rect[2]
             if not angle:
@@ -165,7 +172,7 @@ def main():
     handle_tweaks()
 
    
-    cap = cv2.VideoCapture("../videos/Na Praia -Per-Olov Kindgren-.mp4")#0 ../videos/Na Praia -Per-Olov Kindgren-.mp4"
+    cap = cv2.VideoCapture(0)#0 ../videos/Na Praia -Per-Olov Kindgren-.mp4"
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
