@@ -1,0 +1,4 @@
+opencv-python
+ultralytics
+numpy
+PySimpleGui==4.60.5
