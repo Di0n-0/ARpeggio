@@ -138,15 +138,17 @@ def ascii_tutor_points(img, intersections, guitar_strings):
     global counter_tab, previous_time
     overlay = img.copy()
 
-    for point_index in deciphered_point_data[counter_tab]:
+    for point_list in deciphered_point_data[counter_tab]:
+        point_index = point_list[0]
+        point_color = point_list[2]
         if point_index < 0:
             try:
-                cv2.line(overlay, (int(img.shape[0] - (0 * guitar_strings[-point_index - 1][0] + guitar_strings[-point_index - 1][1])), 0), (int(img.shape[0] - (img.shape[1] * guitar_strings[-point_index - 1][0] + guitar_strings[-point_index - 1][1])), img.shape[1]), color=(68,214,44), thickness=5)
+                cv2.line(overlay, (int(img.shape[0] - (0 * guitar_strings[-point_index - 1][0] + guitar_strings[-point_index - 1][1])), 0), (int(img.shape[0] - (img.shape[1] * guitar_strings[-point_index - 1][0] + guitar_strings[-point_index - 1][1])), img.shape[1]), color=point_color, thickness=5)
             except cv2.error:
                 continue
         else:
             point_index -= 1
-            cv2.circle(overlay, (int(img.shape[0] - intersections[point_index][1]), int(intersections[point_index][0])), radius=7, color=(68,214,44), thickness=-1)
+            cv2.circle(overlay, (int(img.shape[0] - intersections[point_index][1]), int(intersections[point_index][0])), radius=7, color=point_color, thickness=-1)
     
     img = cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0)
 
@@ -172,7 +174,7 @@ def main():
     handle_tweaks()
 
    
-    cap = cv2.VideoCapture(0)#0 ../videos/Na Praia -Per-Olov Kindgren-.mp4"
+    cap = cv2.VideoCapture("../test.mp4")#0
     
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
