@@ -6,43 +6,17 @@ import numpy as np
 from ultralytics import YOLO
 import PySimpleGUI as sg
 import decipher as deci
+import gui
 
 def gui_init():
-    global file_path_tab, dev_mode, show_fretboard, mirror_effect, ascii_tutor, slowing_factor, alpha
-    sg.theme("DarkGrey15")
-    layout_gui = [
-        [sg.Text("Developer Mode"), sg.Checkbox("", default=dev_mode, key="dev_mode", enable_events=True)],
-        [sg.Text("Show Fretboard"), sg.Checkbox("", default=show_fretboard, key="fretboard", enable_events=True)],
-        [sg.Text("Mirror Effect"), sg.Checkbox("", default=mirror_effect, key="mirror_effect", enable_events=True)],
-        [sg.Text("Slowing Factor", key="slowing_factor_text"), sg.Slider(range=(0, 10), default_value=slowing_factor, orientation="h", key="slowing_factor", enable_events=True)],
-        [sg.Text("Alpha Value", key="alpha_value_text"), sg.Slider(range=(0, 10), default_value=alpha*10, orientation="h", key="alpha", enable_events=True)],
-        [sg.InputText(default_text=file_path_tab, key="-FILE_TAB-", enable_events=True), sg.FileBrowse(file_types=(("Text Files", "*.txt"),))],
-        [sg.Button("Exit ARpeggio", key="exit", enable_events=True)]
-    ]
-    window_gui = sg.Window("Settings", layout_gui)
-
-    while True:
-        event, values = window_gui.read()
-        if event == sg.WINDOW_CLOSED:
-            break
-        if event is not None:
-            if event == "exit":
-                if cap is not None:
-                    cap.release()
-                    cv2.destroyAllWindows()
-                window_gui.close()
-                sys.exit()
-            elif event == "-FILE_TAB-":
-                file_path_tab = values["-FILE_TAB-"]
-            dev_mode = values["dev_mode"]
-            show_fretboard = values["fretboard"]
-            mirror_effect = values["mirror_effect"]
-            slowing_factor = values["slowing_factor"]
-            alpha = values["alpha"] / 10
-            if file_path_tab.endswith(".txt"):
-                ascii_tutor = True
-
-    window_gui.close()
+    global file_path_tab, dev_mode, show_fretboard, mirror_effect, ascii_tutor, slowing_factor, alpha, exit
+    file_path_tab, dev_mode, show_fretboard, mirror_effect, ascii_tutor, slowing_factor, alpha, exit = gui.main()
+    alpha /= 10
+    if exit:
+        if cap is not None:
+            cap.release()
+            cv2.destroyAllWindows()
+        sys.exit()
 
 def handle_tweaks():
     global deciphered_point_data
@@ -51,7 +25,7 @@ def handle_tweaks():
         try:
             deciphered_point_data = deci.main(file_path_tab)
         except FileNotFoundError:
-            print("There is no such pre-recorded file, exiting")
+            print("There is no such text file, exiting...")
             sys.exit()
 
 def object_segment(img, model):
@@ -224,6 +198,7 @@ dev_mode = True
 mirror_effect = False
 ascii_tutor = False
 show_fretboard = True
+exit = False
 
 alpha = 0.7
 
