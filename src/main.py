@@ -4,7 +4,6 @@ import cv2
 import time
 import numpy as np
 from ultralytics import YOLO
-import PySimpleGUI as sg
 import decipher as deci
 import gui
 
@@ -29,7 +28,7 @@ def handle_tweaks():
             sys.exit()
 
 def object_segment(img, model):
-    results = model(img)
+    results = model(img, device="cpu")
     mask_rgba = np.zeros_like(img)
     intersections = []
     guitar_strings = []
