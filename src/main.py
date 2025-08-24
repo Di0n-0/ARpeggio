@@ -28,7 +28,7 @@ def handle_tweaks():
             sys.exit()
 
 def object_segment(img, model):
-    results = model(img, device="cpu")
+    results = model(img, device="cpu") #use your gpu if it's supported mine isn't
     mask_rgba = np.zeros_like(img)
     intersections = []
     guitar_strings = []
@@ -184,7 +184,7 @@ def main():
     cap.release()
     cv2.destroyAllWindows() 
 
-model_fretboard_seg = YOLO("../models/fretboard_seg.pt")
+model_fretboard_seg = YOLO("../models/fretboard_segment_yolo11.pt")
 
 img_cut_value = 0
 
